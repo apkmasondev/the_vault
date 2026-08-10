@@ -189,6 +189,12 @@ export const AboutPanel = ({
             colour separates toward the corners under a light film grain. All of it keeps its
             transparency, so the glow still falls across the footage underneath.
           </p>
+          <p>
+            The film's own smoke freezes at that frame along with everything else in it, so the
+            live scene picks the motion up: two sheets of smoke, one behind the object and one
+            drifting in front, drawn by warping a noise field with itself. That self-warping is the
+            difference between smoke that curls and a texture that slides.
+          </p>
         </section>
 
         <section className="about__section">

@@ -122,22 +122,71 @@ export class AudioEngine {
     this.chargeGain = null;
   }
 
-  /** `strength` is the released charge; a light tap still registers. */
+  /**
+   * Stone meeting stone in a large concrete room. `strength` is the released
+   * charge; a light tap still registers.
+   *
+   * Built from four parts, because a single pitch-swept sine — which is what
+   * this was — is the standard recipe for a cartoon boing, not for an impact:
+   * a noise knock for the contact, a fast-falling body for the mass, two
+   * inharmonic partials for the stone ringing, and a dark tail for the room.
+   */
   impact(strength = 1): void {
     if (!this.enabled || !this.context || !this.master) return;
+    const context = this.context;
+    const master = this.master;
     const level = clamp(strength, 0.15, 1);
-    const oscillator = this.context.createOscillator();
-    const gain = this.context.createGain();
-    const now = this.context.currentTime;
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(72 + level * 46, now);
-    oscillator.frequency.exponentialRampToValueAtTime(31, now + 0.65);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.06 + level * 0.16, now + 0.018);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5 + level * 0.4);
-    oscillator.connect(gain).connect(this.master);
-    oscillator.start(now);
-    oscillator.stop(now + 1);
+    const now = context.currentTime;
+
+    const knock = context.createBufferSource();
+    const knockFilter = context.createBiquadFilter();
+    const knockGain = context.createGain();
+    knock.buffer = this.createNoise(0.11, 4);
+    knockFilter.type = 'bandpass';
+    knockFilter.frequency.setValueAtTime(1_150, now);
+    knockFilter.frequency.exponentialRampToValueAtTime(320, now + 0.09);
+    knockFilter.Q.value = 1.1;
+    knockGain.gain.setValueAtTime(0.1 + level * 0.16, now);
+    knockGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    knock.connect(knockFilter).connect(knockGain).connect(master);
+    knock.start(now);
+
+    // The drop is over in under a tenth of a second; anything slower sings.
+    const body = context.createOscillator();
+    const bodyGain = context.createGain();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(104 + level * 40, now);
+    body.frequency.exponentialRampToValueAtTime(43, now + 0.07);
+    bodyGain.gain.setValueAtTime(0.0001, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.08 + level * 0.16, now + 0.008);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34 + level * 0.22);
+    body.connect(bodyGain).connect(master);
+    body.start(now);
+    body.stop(now + 0.7);
+
+    for (const [frequency, amplitude, decay] of [[147, 0.045, 0.9], [214, 0.028, 0.66]] as const) {
+      const partial = context.createOscillator();
+      const partialGain = context.createGain();
+      partial.type = 'triangle';
+      partial.frequency.value = frequency;
+      partialGain.gain.setValueAtTime(0.0001, now);
+      partialGain.gain.exponentialRampToValueAtTime(amplitude * level, now + 0.01);
+      partialGain.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+      partial.connect(partialGain).connect(master);
+      partial.start(now);
+      partial.stop(now + decay + 0.05);
+    }
+
+    const room = context.createBufferSource();
+    const roomFilter = context.createBiquadFilter();
+    const roomGain = context.createGain();
+    room.buffer = this.createNoise(0.85, 1.6);
+    roomFilter.type = 'lowpass';
+    roomFilter.frequency.value = 640;
+    roomGain.gain.setValueAtTime(0.03 + level * 0.05, now + 0.01);
+    roomGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+    room.connect(roomFilter).connect(roomGain).connect(master);
+    room.start(now);
   }
 
   /**
@@ -149,18 +198,10 @@ export class AudioEngine {
     const context = this.context;
     const now = context.currentTime;
 
-    const length = Math.floor(context.sampleRate * 0.45);
-    const noise = context.createBuffer(1, length, context.sampleRate);
-    const channel = noise.getChannelData(0);
-    for (let index = 0; index < length; index += 1) {
-      // Decaying noise, sharpest at the moment of the break.
-      channel[index] = (Math.random() * 2 - 1) * (1 - index / length) ** 3;
-    }
-
     const source = context.createBufferSource();
     const crackFilter = context.createBiquadFilter();
     const crackGain = context.createGain();
-    source.buffer = noise;
+    source.buffer = this.createNoise(0.45, 3);
     crackFilter.type = 'bandpass';
     crackFilter.frequency.setValueAtTime(2_100, now);
     crackFilter.frequency.exponentialRampToValueAtTime(620, now + 0.4);
@@ -217,6 +258,18 @@ export class AudioEngine {
     this.soundtrack = null;
     this.soundtrackSource = null;
     this.analyser = null;
+  }
+
+  /** Noise that decays over its own length; `shape` sets how abruptly. */
+  private createNoise(seconds: number, shape: number): AudioBuffer {
+    const context = this.context!;
+    const length = Math.max(1, Math.floor(context.sampleRate * seconds));
+    const buffer = context.createBuffer(1, length, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < length; index += 1) {
+      channel[index] = (Math.random() * 2 - 1) * (1 - index / length) ** shape;
+    }
+    return buffer;
   }
 
   private createGraph(): void {

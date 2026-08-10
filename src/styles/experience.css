@@ -12,6 +12,7 @@
   --media-y: 0px;
   --charge: 0;
   --glow: 0;
+  --frame-inset: 0%;
   position: sticky;
   top: 0;
   width: 100%;
@@ -82,6 +83,8 @@
   display: block;
   width: 100%;
   height: 100%;
+  /* Confined to the film's own rectangle; see the note where this is measured. */
+  clip-path: inset(var(--frame-inset, 0%) 0%);
   pointer-events: none;
 }
 

@@ -239,6 +239,78 @@ const heartFragmentShader = /* glsl */ `
   }
 `;
 
+/**
+ * Smoke rolling up from the floor of the chamber. The footage freezes when the
+ * live scene takes over, and its smoke freezes with it, so this carries the
+ * motion on from where the film stops.
+ *
+ * Built by warping a noise field with itself — the offsets are what make it
+ * curl and fold rather than slide, which is the whole difference between smoke
+ * and a scrolling texture.
+ */
+const smokeVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const smokeFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uAmount;
+  uniform float uSeed;
+  uniform float uAgitation;
+  varying vec2 vUv;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+
+  float fbm(vec2 p) {
+    float value = noise(p) * 0.5;
+    value += noise(p * 2.03 + 3.1) * 0.29;
+    value += noise(p * 4.11 + 7.7) * 0.15;
+    return value;
+  }
+
+  void main() {
+    vec2 uv = vUv + uSeed;
+    float rise = uTime * 0.08;
+
+    // Warp the field with a sample of itself, twice.
+    vec2 warp = vec2(
+      fbm(uv * 2.1 - vec2(0.0, rise)),
+      fbm(uv * 2.1 + vec2(4.7, 1.3) - vec2(0.0, rise * 1.25))
+    );
+    float density = fbm(uv * 2.4 + warp * (1.5 + uAgitation * 0.9) - vec2(0.0, rise * 0.8));
+
+    // A column: thick along the floor, thinning as it climbs and at the walls.
+    float column = 1.0 - smoothstep(0.02, 0.92, vUv.y);
+    float walls = smoothstep(0.0, 0.26, vUv.x) * smoothstep(1.0, 0.74, vUv.x);
+    // The field sits around 0.47, so the threshold has to straddle that or
+    // almost everything is cut away. Keeping the range narrow is what separates
+    // it into wisps instead of laying down an even fog.
+    float body = smoothstep(0.36, 0.585, density);
+
+    float alpha = body * column * walls * uAmount;
+    // Premultiplied: the canvas is composited that way, and without this the
+    // colour arrives at full strength however thin the smoke is.
+    gl_FragColor = vec4(vec3(0.83, 0.79, 0.72) * alpha, alpha);
+  }
+`;
+
 const fogVertexShader = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -303,6 +375,7 @@ export class VaultRenderer {
   private readonly coreMaterial: THREE.ShaderMaterial;
   private readonly heartMaterial: THREE.ShaderMaterial;
   private readonly moteMaterial: THREE.ShaderMaterial;
+  private readonly smokeMaterials: THREE.ShaderMaterial[] = [];
   private readonly particleMaterial: THREE.ShaderMaterial;
   private readonly fogMaterial: THREE.ShaderMaterial;
   private readonly particleGeometry: THREE.BufferGeometry;
@@ -486,6 +559,37 @@ export class VaultRenderer {
     motes.position.z = 0.6;
     this.world.add(motes);
 
+    // Two sheets at different depths: one behind the object and one drifting in
+    // front of it, which is what gives the smoke a sense of volume.
+    if (this.quality.smoke) {
+      const sheets: readonly (readonly [number, number, number, number, number, number, number])[] = [
+        [13, 6.4, 0, -1.6, -0.9, 0, -2],
+        [9.5, 4.6, 0, -1.3, 1.5, 0.37, 2],
+      ];
+      for (const [width, height, x, y, z, seed, order] of sheets) {
+        const material = new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+            uAmount: { value: 0 },
+            uSeed: { value: seed },
+            uAgitation: { value: 0 },
+          },
+          vertexShader: smokeVertexShader,
+          fragmentShader: smokeFragmentShader,
+          transparent: true,
+          depthWrite: false,
+        });
+        const geometry = new THREE.PlaneGeometry(width, height);
+        this.geometries.push(geometry);
+        this.materials.push(material);
+        this.smokeMaterials.push(material);
+        const sheet = new THREE.Mesh(geometry, material);
+        sheet.position.set(x, y, z);
+        sheet.renderOrder = order;
+        this.world.add(sheet);
+      }
+    }
+
     const fogGeometry = new THREE.PlaneGeometry(11.5, 7);
     this.geometries.push(fogGeometry);
     const fog = new THREE.Mesh(fogGeometry, this.fogMaterial);
@@ -545,6 +649,16 @@ export class VaultRenderer {
 
     this.moteMaterial.uniforms.uTime!.value = this.elapsed;
     this.moteMaterial.uniforms.uOpen!.value = open;
+
+    // Thickest once the film has frozen and the live scene has to carry the
+    // motion; impacts and breaks stir it.
+    const smokeAmount = open * (0.55 + reveal * 0.55 + failure * 0.3);
+    const agitation = Math.min(1, this.shock + this.split * 2);
+    for (const material of this.smokeMaterials) {
+      material.uniforms.uTime!.value = this.elapsed;
+      material.uniforms.uAmount!.value = smokeAmount;
+      material.uniforms.uAgitation!.value = agitation;
+    }
 
     const particles = this.particleMaterial.uniforms;
     particles.uTime!.value = this.elapsed;

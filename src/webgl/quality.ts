@@ -12,6 +12,8 @@ export interface QualityProfile {
   readonly stars: number;
   /** Large, soft, defocused motes drifting in the opened chamber. */
   readonly motes: number;
+  /** Warped-noise smoke is the most expensive thing per pixel in the scene. */
+  readonly smoke: boolean;
   readonly geometryDetail: number;
   /** The bloom chain is the first thing dropped on a struggling device. */
   readonly postProcessing: boolean;
@@ -28,6 +30,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       particles: 1050,
       stars: 440,
       motes: 68,
+      smoke: true,
       geometryDetail: 4,
       postProcessing: true,
     };
@@ -40,6 +43,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       particles: 620,
       stars: 270,
       motes: 44,
+      smoke: true,
       geometryDetail: 3,
       postProcessing: true,
     };
@@ -51,6 +55,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
     particles: 300,
     stars: 140,
     motes: 22,
+    smoke: false,
     geometryDetail: 2,
     postProcessing: false,
   };

@@ -317,7 +317,13 @@ export const Experience = ({
       // a ref because the renderer is imported lazily and may not exist yet.
       const frame = posterRef.current?.getBoundingClientRect();
       if (frame && frame.height > 0) {
-        frameScaleRef.current = frame.height / window.innerHeight;
+        const scale = frame.height / window.innerHeight;
+        frameScaleRef.current = scale;
+        // Everything rendered live belongs inside the film. Without clipping,
+        // the smoke and the particulate spill into the letterbox on a phone and
+        // sit in the black margin with nothing behind them.
+        const inset = Math.max(0, (1 - scale) / 2) * 100;
+        stageRef.current?.style.setProperty('--frame-inset', `${inset.toFixed(2)}%`);
       }
       rendererRef.current?.resize();
     };
