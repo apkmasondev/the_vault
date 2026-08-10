@@ -47,7 +47,8 @@ The reveal after frame 206 of the opening film is rendered live in WebGL. Origin
 
 Pushes to `main` run CI and the Pages workflow. In the repository settings, GitHub Pages must use **GitHub Actions** as its source.
 
-Production URL: <https://apkmasondev.github.io/the_vault/>
+Production URL: <https://apkmason.dev/the_vault/>  
+GitHub Pages URL (redirects to the configured domain): <https://apkmasondev.github.io/the_vault/>
 
 ## Credits
 
