@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AudioEngine } from '../audio/AudioEngine';
+import { AudioEngine, type AudioBands } from '../audio/AudioEngine';
 import { asset, LOAD_WATCHDOG_MS, MEDIA } from './constants';
 import { AboutPanel } from '../components/AboutPanel';
 import { EntryGate } from '../components/EntryGate';
@@ -10,6 +10,7 @@ import { createTelemetry } from './telemetry';
 
 const AUDIO_PREFERENCE_KEY = 'vault.audio.enabled';
 const ABOUT_HASH = '#about';
+const SILENCE: AudioBands = { low: 0, mid: 0, high: 0 };
 
 const storedAudioPreference = (): boolean => {
   try {
@@ -118,7 +119,21 @@ export const App = () => {
     audioRef.current?.update(progress);
   }, []);
 
-  const pulseAudio = useCallback((): void => audioRef.current?.impact(), []);
+  const readAudioBands = useCallback(
+    (now: number): AudioBands => audioRef.current?.bands(now) ?? SILENCE,
+    [],
+  );
+
+  const startCharge = useCallback((): void => audioRef.current?.beginCharge(), []);
+
+  const changeCharge = useCallback((amount: number): void => {
+    audioRef.current?.updateCharge(amount);
+  }, []);
+
+  const releaseCharge = useCallback((amount: number): void => {
+    audioRef.current?.endCharge();
+    if (amount > 0) audioRef.current?.impact(amount);
+  }, []);
 
   const updateVisibility = useCallback((visible: boolean): void => {
     if (visible) void audioRef.current?.resume();
@@ -147,11 +162,14 @@ export const App = () => {
           cinematicRunning={cinematicRunning}
           telemetry={telemetryRef.current}
           controls={controlsRef}
+          readAudioBands={readAudioBands}
           onLoadProgress={setLoadProgress}
           onMediaError={() => setMediaError(true)}
           onToggleSound={toggleSound}
           onProgress={updateAudio}
-          onArtifactPulse={pulseAudio}
+          onChargeStart={startCharge}
+          onChargeChange={changeCharge}
+          onChargeRelease={releaseCharge}
           onVisibilityChange={updateVisibility}
           onCinematicChange={setCinematicRunning}
           onOpenAbout={openAbout}

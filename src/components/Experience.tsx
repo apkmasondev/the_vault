@@ -7,6 +7,7 @@ import {
   TIMELINE,
   VIDEO_DURATION_FALLBACK,
 } from '../app/constants';
+import type { AudioBands } from '../audio/AudioEngine';
 import type { Telemetry } from '../app/telemetry';
 import { ScrollDirector } from '../media/ScrollDirector';
 import { VideoScrubber } from '../media/VideoScrubber';
@@ -27,6 +28,13 @@ import { Finale } from './Finale';
 const MINIMUM_FAILURE_DURATION_MS = 1_800;
 /** How long a hands-off run of the entire timeline takes. */
 const CINEMATIC_DURATION_MS = 62_000;
+/** Seconds of continuous contact needed to bring the core to full charge. */
+const CHARGE_SECONDS = 1.5;
+/** A release at or above this counts toward the hidden resonance. */
+const RESONANT_CHARGE = 0.8;
+const RESONANT_RELEASES = 3;
+/** Horizontal travel that turns a hold into a rotation drag. */
+const DRAG_THRESHOLD_PX = 10;
 const SCROLL_KEYS = new Set([
   'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ', 'Spacebar',
 ]);
@@ -43,11 +51,14 @@ interface ExperienceProps {
   readonly cinematicRunning: boolean;
   readonly telemetry: Telemetry;
   readonly controls: React.RefObject<VaultControls | null>;
+  readonly readAudioBands: (now: number) => AudioBands;
   readonly onLoadProgress: (progress: number) => void;
   readonly onMediaError: () => void;
   readonly onToggleSound: () => void;
   readonly onProgress: (progress: number) => void;
-  readonly onArtifactPulse: () => void;
+  readonly onChargeStart: () => void;
+  readonly onChargeChange: (amount: number) => void;
+  readonly onChargeRelease: (amount: number) => void;
   readonly onVisibilityChange: (visible: boolean) => void;
   readonly onCinematicChange: (running: boolean) => void;
   readonly onOpenAbout: () => void;
@@ -74,11 +85,14 @@ export const Experience = ({
   cinematicRunning,
   telemetry,
   controls,
+  readAudioBands,
   onLoadProgress,
   onMediaError,
   onToggleSound,
   onProgress,
-  onArtifactPulse,
+  onChargeStart,
+  onChargeChange,
+  onChargeRelease,
   onVisibilityChange,
   onCinematicChange,
   onOpenAbout,
@@ -111,6 +125,9 @@ export const Experience = ({
   const directorRef = useRef(new ScrollDirector());
   const cinematicRef = useRef(false);
   const contactsRef = useRef(0);
+  const chargeRef = useRef(0);
+  const holdRef = useRef({ active: false, dragging: false, startX: 0, lastX: 0 });
+  const resonantReleasesRef = useRef(0);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -122,6 +139,8 @@ export const Experience = ({
   const [chapterId, setChapterId] = useState(() => chapterIdForProgress(0));
   const [debugVisible, setDebugVisible] = useState(false);
   const [artifactResponding, setArtifactResponding] = useState(false);
+  const [charging, setCharging] = useState(false);
+  const [resonant, setResonant] = useState(false);
   const sources = useMemo(selectVideoSources, []);
 
   authorizedRef.current = authorized;
@@ -348,9 +367,29 @@ export const Experience = ({
         const pointer = pointerRef.current;
         pointer.x = damp(pointer.x, pointer.targetX, 0.12, deltaSeconds);
         pointer.y = damp(pointer.y, pointer.targetY, 0.12, deltaSeconds);
-        stageRef.current?.style.setProperty('--media-x', `${pointer.x * 3}px`);
-        stageRef.current?.style.setProperty('--media-y', `${pointer.y * 2}px`);
-        rendererRef.current?.update(visualProgress, deltaSeconds, pointer.x, pointer.y);
+
+        const hold = holdRef.current;
+        chargeRef.current = hold.active && !hold.dragging
+          ? Math.min(1, chargeRef.current + deltaSeconds / CHARGE_SECONDS)
+          : Math.max(0, chargeRef.current - deltaSeconds * 3);
+        if (hold.active && !hold.dragging) onChargeChange(chargeRef.current);
+
+        const stage = stageRef.current;
+        stage?.style.setProperty('--media-x', `${pointer.x * 3}px`);
+        stage?.style.setProperty('--media-y', `${pointer.y * 2}px`);
+        stage?.style.setProperty('--charge', chargeRef.current.toFixed(3));
+
+        const bands = readAudioBands(now);
+        rendererRef.current?.update({
+          progress: visualProgress,
+          deltaSeconds,
+          pointerX: pointer.x,
+          pointerY: pointer.y,
+          charge: chargeRef.current,
+          audioLow: bands.low,
+          audioMid: bands.mid,
+          audioHigh: bands.high,
+        });
 
         if (progressRef.current) {
           progressRef.current.textContent = String(Math.round(displayProgress * 100)).padStart(3, '0');
@@ -382,6 +421,7 @@ export const Experience = ({
         telemetry.fps = rendererMetrics?.fps ?? 0;
         telemetry.drawCalls = rendererMetrics?.drawCalls ?? 0;
         telemetry.dpr = rendererMetrics?.dpr ?? window.devicePixelRatio;
+        telemetry.charge = chargeRef.current;
         telemetry.contacts = contactsRef.current;
 
         if (debugRef.current) {
@@ -412,20 +452,62 @@ export const Experience = ({
       window.removeEventListener('orientationchange', measure);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [onProgress, onVisibilityChange, sources.resolution, stopCinematic, telemetry]);
+  }, [
+    onChargeChange,
+    onProgress,
+    onVisibilityChange,
+    readAudioBands,
+    sources.resolution,
+    stopCinematic,
+    telemetry,
+  ]);
 
   const [primary, secondary] = cueCopy[cue];
   const finaleVisible = cue === 'final';
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
 
-  const pulseArtifact = (): void => {
-    if (!rendererRef.current?.pulse()) return;
+  const beginHold = (clientX: number): void => {
+    holdRef.current = { active: true, dragging: false, startX: clientX, lastX: clientX };
+    setCharging(true);
+    onChargeStart();
+  };
+
+  const trackHold = (clientX: number): void => {
+    const hold = holdRef.current;
+    if (!hold.active) return;
+    const delta = clientX - hold.lastX;
+    hold.lastX = clientX;
+    if (!hold.dragging && Math.abs(clientX - hold.startX) > DRAG_THRESHOLD_PX) {
+      // A drag is a different gesture; whatever charge accrued is given back.
+      hold.dragging = true;
+      chargeRef.current = 0;
+      setCharging(false);
+      onChargeRelease(0);
+    }
+    // Dragging right turns the object's face to the right.
+    if (hold.dragging) rendererRef.current?.addSpin((delta / window.innerWidth) * 14);
+  };
+
+  const endHold = (): void => {
+    const hold = holdRef.current;
+    if (!hold.active) return;
+    const charge = chargeRef.current;
+    const wasDragging = hold.dragging;
+    holdRef.current = { active: false, dragging: false, startX: 0, lastX: 0 };
+    setCharging(false);
+    chargeRef.current = 0;
+    onChargeRelease(wasDragging ? 0 : charge);
+    if (wasDragging || !rendererRef.current?.release(charge)) return;
+
     contactsRef.current += 1;
-    onArtifactPulse();
+    if (charge >= RESONANT_CHARGE) {
+      resonantReleasesRef.current += 1;
+      if (resonantReleasesRef.current >= RESONANT_RELEASES) setResonant(true);
+    }
     setArtifactResponding(true);
     if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
-    interactionTimerRef.current = window.setTimeout(() => setArtifactResponding(false), 1_350);
+    interactionTimerRef.current = window.setTimeout(() => setArtifactResponding(false), 1_600);
   };
 
   const replay = (): void => {
@@ -437,7 +519,12 @@ export const Experience = ({
     failureHoldUntilRef.current = 0;
     displayProgressRef.current = 0;
     contactsRef.current = 0;
+    chargeRef.current = 0;
+    resonantReleasesRef.current = 0;
+    holdRef.current = { active: false, dragging: false, startX: 0, lastX: 0 };
     setArtifactResponding(false);
+    setCharging(false);
+    setResonant(false);
     setHasScrolled(false);
     onReplay();
   };
@@ -527,15 +614,36 @@ export const Experience = ({
           {artifactInteractive && !webglFailed && (
             <>
               <button
-                className="artifact-hit-target"
+                className={`artifact-hit-target${charging ? ' is-charging' : ''}`}
                 type="button"
-                aria-label="Touch the artifact to amplify its resonance"
-                onClick={pulseArtifact}
+                aria-label="Hold to charge the object, drag sideways to turn it"
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  beginHold(event.clientX);
+                }}
+                onPointerMove={(event) => trackHold(event.clientX)}
+                onPointerUp={endHold}
+                onPointerCancel={endHold}
+                onLostPointerCapture={endHold}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  if (!holdRef.current.active) beginHold(0);
+                }}
+                onKeyUp={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  endHold();
+                }}
               />
-              <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}`}>
-                {artifactResponding
-                  ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
-                  : 'TOUCH / CLICK THE OBJECT'}
+              <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
+                {resonant
+                  ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
+                  : charging
+                    ? 'CHARGING — RELEASE TO DISCHARGE'
+                    : artifactResponding
+                      ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
+                      : 'HOLD THE OBJECT · DRAG TO TURN'}
               </p>
             </>
           )}
@@ -584,7 +692,14 @@ export const Experience = ({
             {primary}{secondary ? `. ${secondary}` : ''}
           </p>
 
-          {finaleVisible && <Finale contacts={contactsRef.current} onAbout={onOpenAbout} onReplay={replay} />}
+          {finaleVisible && (
+            <Finale
+              contacts={contactsRef.current}
+              resonant={resonant}
+              onAbout={onOpenAbout}
+              onReplay={replay}
+            />
+          )}
 
           {import.meta.env.DEV && <pre className={`debug-panel${debugVisible ? ' is-visible' : ''}`} ref={debugRef} />}
         </div>

@@ -132,8 +132,27 @@
   border: 0;
   border-radius: 50%;
   background: transparent;
-  cursor: pointer;
+  cursor: grab;
   transform: translate(-50%, -50%);
+  /* Horizontal drags turn the object; vertical ones still scroll the page. */
+  touch-action: pan-y;
+}
+
+.artifact-hit-target.is-charging {
+  cursor: grabbing;
+}
+
+/* A ring that fills as the core takes on charge. */
+.artifact-hit-target::after {
+  position: absolute;
+  inset: -6%;
+  content: '';
+  border: 1px solid rgba(215, 183, 122, calc(0.16 + var(--charge, 0) * 0.6));
+  border-radius: 50%;
+  opacity: calc(var(--charge, 0) * 0.9);
+  transform: scale(calc(1 + var(--charge, 0) * 0.09));
+  box-shadow: 0 0 calc(var(--charge, 0) * 3rem) rgba(215, 183, 122, calc(var(--charge, 0) * 0.22));
+  pointer-events: none;
 }
 
 .artifact-hit-target:focus-visible {
@@ -162,6 +181,11 @@
 .artifact-guidance.is-responding {
   color: var(--accent);
   text-shadow: 0 0 1.4rem rgba(215, 183, 122, 0.52);
+}
+
+.artifact-guidance.is-charging {
+  color: color-mix(in srgb, var(--accent) calc(var(--charge, 0) * 100%), rgba(232, 228, 219, 0.58));
+  letter-spacing: calc(0.2em + var(--charge, 0) * 0.08em);
 }
 
 .entry-gate {

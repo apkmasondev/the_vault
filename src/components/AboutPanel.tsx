@@ -159,9 +159,15 @@ export const AboutPanel = ({
         <section className="about__section">
           <h3>Touching the object</h3>
           <p>
-            Once the object is exposed it accepts contact. Each touch drives a displacement wave
-            through the surface and a synthesised impact through the audio graph, and the session
-            record at the end counts how many times you reached for it.
+            Press and hold it to feed the core. The fissures widen, the surface swells, the
+            particulate is pushed outward and a synthesised tone climbs with the stored charge.
+            Let go and it leaves as a shockwave through the geometry. Drag sideways instead and the
+            object spins, carrying its momentum until friction takes it back.
+          </p>
+          <p>
+            While the soundtrack plays it is analysed live, and its low band displaces the surface —
+            the object is breathing in time with what you are hearing. Whether you ever reached for
+            it, and how hard, is written into the session record at the end.
           </p>
         </section>
 
