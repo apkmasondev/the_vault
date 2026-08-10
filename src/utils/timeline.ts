@@ -1,4 +1,4 @@
-import { TIMELINE, VIDEO_2_REVEAL_CUTOFF } from '../app/constants';
+import { CHAPTERS, TIMELINE, VIDEO_2_REVEAL_CUTOFF } from '../app/constants';
 import { clamp, mapRange } from './math';
 
 export const video1TimeForProgress = (progress: number, duration: number): number =>
@@ -49,4 +49,13 @@ export const cueForProgress = (progress: number): TimelineCue => {
     if (progress >= threshold) return cue;
   }
   return 'idle';
+};
+
+/** The last chapter the sequence has reached, for the navigation rail. */
+export const chapterIdForProgress = (progress: number): string => {
+  let active = CHAPTERS[0]!.id;
+  for (const chapter of CHAPTERS) {
+    if (progress >= chapter.progress) active = chapter.id;
+  }
+  return active;
 };

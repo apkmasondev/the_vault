@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   asset,
   MEDIA,
@@ -7,10 +7,13 @@ import {
   TIMELINE,
   VIDEO_DURATION_FALLBACK,
 } from '../app/constants';
+import type { Telemetry } from '../app/telemetry';
+import { ScrollDirector } from '../media/ScrollDirector';
 import { VideoScrubber } from '../media/VideoScrubber';
 import { selectVideoSources } from '../media/videoSources';
 import { clamp, damp, smoothstep } from '../utils/math';
 import {
+  chapterIdForProgress,
   cueForProgress,
   type TimelineCue,
   video1TimeForProgress,
@@ -18,19 +21,36 @@ import {
 } from '../utils/timeline';
 import type { VaultRenderer } from '../webgl/VaultRenderer';
 import { AudioToggle } from './AudioToggle';
+import { ChapterRail } from './ChapterRail';
 import { Finale } from './Finale';
 
 const MINIMUM_FAILURE_DURATION_MS = 1_800;
+/** How long a hands-off run of the entire timeline takes. */
+const CINEMATIC_DURATION_MS = 62_000;
+const SCROLL_KEYS = new Set([
+  'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ', 'Spacebar',
+]);
+
+export interface VaultControls {
+  /** `smooth` is for deliberate jumps; scrubbing wants the instant form. */
+  seek(progress: number, smooth?: boolean): void;
+  toggleCinematic(): void;
+}
 
 interface ExperienceProps {
   readonly authorized: boolean;
   readonly soundEnabled: boolean;
+  readonly cinematicRunning: boolean;
+  readonly telemetry: Telemetry;
+  readonly controls: React.RefObject<VaultControls | null>;
   readonly onLoadProgress: (progress: number) => void;
   readonly onMediaError: () => void;
   readonly onToggleSound: () => void;
   readonly onProgress: (progress: number) => void;
   readonly onArtifactPulse: () => void;
   readonly onVisibilityChange: (visible: boolean) => void;
+  readonly onCinematicChange: (running: boolean) => void;
+  readonly onOpenAbout: () => void;
   readonly onReplay: () => void;
 }
 
@@ -51,12 +71,17 @@ const cueCopy: Record<TimelineCue, readonly [string, string?]> = {
 export const Experience = ({
   authorized,
   soundEnabled,
+  cinematicRunning,
+  telemetry,
+  controls,
   onLoadProgress,
   onMediaError,
   onToggleSound,
   onProgress,
   onArtifactPulse,
   onVisibilityChange,
+  onCinematicChange,
+  onOpenAbout,
   onReplay,
 }: ExperienceProps) => {
   const sectionRef = useRef<HTMLElement>(null);
@@ -80,6 +105,12 @@ export const Experience = ({
   // the loop to be torn down and restarted mid-scroll.
   const video2ReadyRef = useRef(false);
   const video2FailedRef = useRef(false);
+  // Scroll geometry, kept outside the loop so seeking can use it too.
+  const sectionTopRef = useRef(0);
+  const scrollDistanceRef = useRef(1);
+  const directorRef = useRef(new ScrollDirector());
+  const cinematicRef = useRef(false);
+  const contactsRef = useRef(0);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -88,6 +119,7 @@ export const Experience = ({
   const [webglFailed, setWebglFailed] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [cue, setCue] = useState<TimelineCue>('idle');
+  const [chapterId, setChapterId] = useState(() => chapterIdForProgress(0));
   const [debugVisible, setDebugVisible] = useState(false);
   const [artifactResponding, setArtifactResponding] = useState(false);
   const sources = useMemo(selectVideoSources, []);
@@ -95,6 +127,8 @@ export const Experience = ({
   authorizedRef.current = authorized;
   video2ReadyRef.current = video2Ready;
   video2FailedRef.current = video2Failed;
+  cinematicRef.current = cinematicRunning;
+  telemetry.resolution = sources.resolution;
 
   useEffect(() => {
     const progress = (posterReady ? 45 : 0) + (video1Ready ? 35 : 0) + (webglReady ? 20 : 0);
@@ -182,6 +216,58 @@ export const Experience = ({
     };
   }, []);
 
+  const stopCinematic = useCallback((): void => {
+    if (!directorRef.current.isRunning && !cinematicRef.current) return;
+    directorRef.current.stop();
+    cinematicRef.current = false;
+    onCinematicChange(false);
+  }, [onCinematicChange]);
+
+  // Any real navigation intent hands control straight back to the visitor.
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent): void => {
+      if (SCROLL_KEYS.has(event.key)) stopCinematic();
+    };
+    window.addEventListener('wheel', stopCinematic, { passive: true });
+    window.addEventListener('touchmove', stopCinematic, { passive: true });
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('wheel', stopCinematic);
+      window.removeEventListener('touchmove', stopCinematic);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [stopCinematic]);
+
+  const seek = useCallback((progress: number, smooth = true): void => {
+    stopCinematic();
+    window.scrollTo({
+      top: sectionTopRef.current + clamp(progress) * scrollDistanceRef.current,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }, [stopCinematic]);
+
+  const toggleCinematic = useCallback((): void => {
+    if (directorRef.current.isRunning) {
+      stopCinematic();
+      return;
+    }
+    const top = sectionTopRef.current;
+    const end = top + scrollDistanceRef.current;
+    // Restarting from the end rewinds first, otherwise there is nothing to play.
+    const from = window.scrollY >= end - 2 ? top : window.scrollY;
+    if (from !== window.scrollY) window.scrollTo({ top: from, behavior: 'auto' });
+    directorRef.current.start(from, end, CINEMATIC_DURATION_MS, performance.now());
+    cinematicRef.current = true;
+    onCinematicChange(true);
+  }, [onCinematicChange]);
+
+  useEffect(() => {
+    controls.current = { seek, toggleCinematic };
+    return () => {
+      if (controls.current?.seek === seek) controls.current = null;
+    };
+  }, [controls, seek, toggleCinematic]);
+
   useEffect(() => {
     let frameId = 0;
     let previousTime = performance.now();
@@ -189,15 +275,14 @@ export const Experience = ({
     // to zero if this effect is ever re-run.
     let displayProgress = displayProgressRef.current;
     let latestCue: TimelineCue = cueForProgress(displayProgress);
-    let sectionTop = 0;
-    let scrollDistance = 1;
+    let latestChapter = chapterIdForProgress(displayProgress);
     let pageVisible = !document.hidden;
 
     const measure = (): void => {
       const section = sectionRef.current;
       if (!section) return;
-      sectionTop = section.getBoundingClientRect().top + window.scrollY;
-      scrollDistance = Math.max(1, section.offsetHeight - window.innerHeight);
+      sectionTopRef.current = section.getBoundingClientRect().top + window.scrollY;
+      scrollDistanceRef.current = Math.max(1, section.offsetHeight - window.innerHeight);
       rendererRef.current?.resize();
     };
 
@@ -212,8 +297,12 @@ export const Experience = ({
       previousTime = now;
 
       if (pageVisible) {
+        const directed = directorRef.current.step(now);
+        if (directed !== null) window.scrollTo(0, directed);
+        else if (cinematicRef.current) stopCinematic();
+
         const targetProgress = authorizedRef.current
-          ? clamp((window.scrollY - sectionTop) / scrollDistance)
+          ? clamp((window.scrollY - sectionTopRef.current) / scrollDistanceRef.current)
           : 0;
         displayProgress = damp(displayProgress, targetProgress, SCROLL_DAMPING_SECONDS, deltaSeconds);
         if (Math.abs(targetProgress - displayProgress) < 0.0001) displayProgress = targetProgress;
@@ -273,10 +362,29 @@ export const Experience = ({
           setCue(nextCue);
         }
 
+        const nextChapter = chapterIdForProgress(displayProgress);
+        if (nextChapter !== latestChapter) {
+          latestChapter = nextChapter;
+          setChapterId(nextChapter);
+        }
+
+        const firstMetrics = scrubbers?.first.getMetrics();
+        const secondMetrics = scrubbers?.second.getMetrics();
+        const rendererMetrics = rendererRef.current?.getDiagnostics();
+        telemetry.progress = displayProgress;
+        telemetry.targetProgress = targetProgress;
+        telemetry.cue = nextCue;
+        telemetry.video1Target = firstMetrics?.targetTime ?? 0;
+        telemetry.video1Presented = firstMetrics?.presentedTime ?? 0;
+        telemetry.video2Target = secondMetrics?.targetTime ?? 0;
+        telemetry.video2Presented = secondMetrics?.presentedTime ?? 0;
+        telemetry.webglTier = rendererMetrics?.tier ?? 'fallback';
+        telemetry.fps = rendererMetrics?.fps ?? 0;
+        telemetry.drawCalls = rendererMetrics?.drawCalls ?? 0;
+        telemetry.dpr = rendererMetrics?.dpr ?? window.devicePixelRatio;
+        telemetry.contacts = contactsRef.current;
+
         if (debugRef.current) {
-          const firstMetrics = scrubbers?.first.getMetrics();
-          const secondMetrics = scrubbers?.second.getMetrics();
-          const rendererMetrics = rendererRef.current?.getDiagnostics();
           debugRef.current.textContent = [
             `progress ${displayProgress.toFixed(4)} / ${targetProgress.toFixed(4)}`,
             `video1 ${firstMetrics?.presentedTime.toFixed(2) ?? '--'} / ${firstMetrics?.targetTime.toFixed(2) ?? '--'}`,
@@ -304,7 +412,7 @@ export const Experience = ({
       window.removeEventListener('orientationchange', measure);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [onProgress, onVisibilityChange, sources.resolution]);
+  }, [onProgress, onVisibilityChange, sources.resolution, stopCinematic, telemetry]);
 
   const [primary, secondary] = cueCopy[cue];
   const finaleVisible = cue === 'final';
@@ -313,6 +421,7 @@ export const Experience = ({
 
   const pulseArtifact = (): void => {
     if (!rendererRef.current?.pulse()) return;
+    contactsRef.current += 1;
     onArtifactPulse();
     setArtifactResponding(true);
     if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
@@ -320,12 +429,14 @@ export const Experience = ({
   };
 
   const replay = (): void => {
+    stopCinematic();
     scrubbersRef.current?.first.reset();
     scrubbersRef.current?.second.reset();
     rendererRef.current?.reset();
     failureSeenRef.current = false;
     failureHoldUntilRef.current = 0;
     displayProgressRef.current = 0;
+    contactsRef.current = 0;
     setArtifactResponding(false);
     setHasScrolled(false);
     onReplay();
@@ -434,20 +545,46 @@ export const Experience = ({
               <div className="hud__identity"><span>V-07</span><span>CONTAINMENT</span></div>
               <div className="hud__status"><span>SYSTEM</span><span>{cue === 'failure' ? 'CRITICAL' : 'MONITORING'}</span></div>
               <div className="hud__progress"><span ref={progressRef}>000</span><span>/ 100</span></div>
-              <AudioToggle enabled={soundEnabled} onToggle={onToggleSound} />
+              <div className="hud__controls">
+                <button
+                  className="hud__button"
+                  type="button"
+                  aria-pressed={cinematicRunning}
+                  onClick={toggleCinematic}
+                >
+                  {cinematicRunning ? 'STOP' : 'AUTO'}
+                </button>
+                <button className="hud__button" type="button" onClick={onOpenAbout}>
+                  ABOUT
+                </button>
+                <AudioToggle enabled={soundEnabled} onToggle={onToggleSound} />
+              </div>
             </div>
           )}
 
+          {authorized && !finaleVisible && <ChapterRail activeId={chapterId} onSeek={seek} />}
+
           {authorized && !hasScrolled && (
-            <div className="scroll-cue"><span>SCROLL TO RELEASE</span><span className="scroll-cue__line" aria-hidden="true" /></div>
+            <div className="scroll-cue">
+              <span>SCROLL TO RELEASE</span>
+              <span className="scroll-cue__line" aria-hidden="true" />
+              <button className="text-button" type="button" onClick={toggleCinematic}>
+                OR PLAY IT FOR ME
+              </button>
+            </div>
           )}
 
-          <div className="narrative" aria-live="polite" aria-atomic="true" aria-hidden={finaleVisible}>
+          <div className="narrative" aria-hidden="true">
             <p className="narrative__primary">{primary}</p>
             {secondary && <p className="narrative__secondary">{secondary}</p>}
           </div>
+          {/* One quiet announcement per beat, kept out of the visual layer so it
+              cannot be hidden mid-utterance by the finale. */}
+          <p className="visually-hidden" aria-live="polite">
+            {primary}{secondary ? `. ${secondary}` : ''}
+          </p>
 
-          {finaleVisible && <Finale onReplay={replay} />}
+          {finaleVisible && <Finale contacts={contactsRef.current} onAbout={onOpenAbout} onReplay={replay} />}
 
           {import.meta.env.DEV && <pre className={`debug-panel${debugVisible ? ' is-visible' : ''}`} ref={debugRef} />}
         </div>

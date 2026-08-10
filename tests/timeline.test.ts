@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE, VIDEO_2_REVEAL_CUTOFF } from '../src/app/constants';
-import { cueForProgress, video1TimeForProgress, video2TimeForProgress } from '../src/utils/timeline';
+import { CHAPTERS, TIMELINE, VIDEO_2_REVEAL_CUTOFF } from '../src/app/constants';
+import {
+  chapterIdForProgress,
+  cueForProgress,
+  video1TimeForProgress,
+  video2TimeForProgress,
+} from '../src/utils/timeline';
 
 describe('timeline video mapping', () => {
   it('maps the first video boundaries exactly', () => {
@@ -23,5 +28,32 @@ describe('timeline video mapping', () => {
     expect(cueForProgress(TIMELINE.warningStart)).toBe('released');
     expect(cueForProgress(TIMELINE.failureStart)).toBe('failure');
     expect(cueForProgress(TIMELINE.finalStart)).toBe('final');
+  });
+
+  it('covers the whole range with cues in ascending order', () => {
+    expect(cueForProgress(0)).toBe('idle');
+    expect(cueForProgress(1)).toBe('final');
+    for (let progress = 0; progress <= 1; progress += 0.001) {
+      expect(cueForProgress(progress)).toBeTypeOf('string');
+    }
+  });
+});
+
+describe('chapter navigation', () => {
+  it('keeps chapters ordered and inside the timeline', () => {
+    let previous = -1;
+    for (const chapter of CHAPTERS) {
+      expect(chapter.progress).toBeGreaterThan(previous);
+      expect(chapter.progress).toBeLessThanOrEqual(1);
+      previous = chapter.progress;
+    }
+  });
+
+  it('reports the last chapter the sequence has reached', () => {
+    expect(chapterIdForProgress(0)).toBe(CHAPTERS[0]!.id);
+    expect(chapterIdForProgress(1)).toBe(CHAPTERS[CHAPTERS.length - 1]!.id);
+    for (const chapter of CHAPTERS) {
+      expect(chapterIdForProgress(chapter.progress)).toBe(chapter.id);
+    }
   });
 });

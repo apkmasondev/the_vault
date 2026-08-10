@@ -8,6 +8,7 @@ interface ReducedMotionExperienceProps {
   readonly soundEnabled: boolean;
   readonly onLoadProgress: (progress: number) => void;
   readonly onToggleSound: () => void;
+  readonly onOpenAbout: () => void;
   readonly onReplay: () => void;
 }
 
@@ -24,6 +25,7 @@ export const ReducedMotionExperience = ({
   soundEnabled,
   onLoadProgress,
   onToggleSound,
+  onOpenAbout,
   onReplay,
 }: ReducedMotionExperienceProps) => {
   const [step, setStep] = useState(0);
@@ -63,9 +65,14 @@ export const ReducedMotionExperience = ({
       {step >= 2 && step < 4 && <div className="artifact-fallback" aria-hidden="true" />}
       {authorized && (
         <>
-          {!final && <AudioToggle enabled={soundEnabled} onToggle={onToggleSound} />}
+          {!final && (
+            <div className="hud__controls">
+              <button className="hud__button" type="button" onClick={onOpenAbout}>ABOUT</button>
+              <AudioToggle enabled={soundEnabled} onToggle={onToggleSound} />
+            </div>
+          )}
           {final ? (
-            <Finale onReplay={replay} />
+            <Finale contacts={0} onAbout={onOpenAbout} onReplay={replay} />
           ) : (
             <>
               <div className="reduced-experience__copy" aria-live="polite">

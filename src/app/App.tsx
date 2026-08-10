@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/AudioEngine';
 import { asset, LOAD_WATCHDOG_MS, MEDIA } from './constants';
+import { AboutPanel } from '../components/AboutPanel';
 import { EntryGate } from '../components/EntryGate';
-import { Experience } from '../components/Experience';
+import { Experience, type VaultControls } from '../components/Experience';
 import { ReducedMotionExperience } from '../components/ReducedMotionExperience';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { createTelemetry } from './telemetry';
 
 const AUDIO_PREFERENCE_KEY = 'vault.audio.enabled';
+const ABOUT_HASH = '#about';
 
 const storedAudioPreference = (): boolean => {
   try {
@@ -22,9 +25,15 @@ export const App = () => {
   const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(storedAudioPreference);
   const [mediaError, setMediaError] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(() => window.location.hash === ABOUT_HASH);
+  const [cinematicRunning, setCinematicRunning] = useState(false);
   const audioRef = useRef<AudioEngine | null>(null);
   const authorizeTimerRef = useRef<number | null>(null);
+  const telemetryRef = useRef(createTelemetry('—'));
+  const controlsRef = useRef<VaultControls | null>(null);
   const reducedMotion = useReducedMotion();
+
+  const readTelemetry = useCallback(() => telemetryRef.current, []);
 
   const getAudio = useCallback((): AudioEngine => {
     const audio = audioRef.current ?? new AudioEngine(asset(MEDIA.soundtrack));
@@ -33,9 +42,27 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle('is-entry-locked', !authorized);
+    const locked = !authorized || aboutOpen;
+    document.body.classList.toggle('is-entry-locked', locked);
     return () => document.body.classList.remove('is-entry-locked');
-  }, [authorized]);
+  }, [aboutOpen, authorized]);
+
+  // The panel is linkable, and the back button closes it.
+  useEffect(() => {
+    const sync = (): void => setAboutOpen(window.location.hash === ABOUT_HASH);
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  const openAbout = useCallback((): void => {
+    if (window.location.hash !== ABOUT_HASH) window.history.pushState(null, '', ABOUT_HASH);
+    setAboutOpen(true);
+  }, []);
+
+  const closeAbout = useCallback((): void => {
+    if (window.location.hash === ABOUT_HASH) window.history.back();
+    setAboutOpen(false);
+  }, []);
 
   useEffect(() => () => audioRef.current?.dispose(), []);
 
@@ -110,19 +137,39 @@ export const App = () => {
           soundEnabled={soundEnabled}
           onLoadProgress={setLoadProgress}
           onToggleSound={toggleSound}
+          onOpenAbout={openAbout}
           onReplay={replay}
         />
       ) : (
         <Experience
           authorized={authorized}
           soundEnabled={soundEnabled}
+          cinematicRunning={cinematicRunning}
+          telemetry={telemetryRef.current}
+          controls={controlsRef}
           onLoadProgress={setLoadProgress}
           onMediaError={() => setMediaError(true)}
           onToggleSound={toggleSound}
           onProgress={updateAudio}
           onArtifactPulse={pulseAudio}
           onVisibilityChange={updateVisibility}
+          onCinematicChange={setCinematicRunning}
+          onOpenAbout={openAbout}
           onReplay={replay}
+        />
+      )}
+
+      {aboutOpen && (
+        <AboutPanel
+          readTelemetry={readTelemetry}
+          live={!reducedMotion}
+          cinematicRunning={cinematicRunning}
+          onSeek={(progress) => controlsRef.current?.seek(progress, false)}
+          onToggleCinematic={() => {
+            closeAbout();
+            controlsRef.current?.toggleCinematic();
+          }}
+          onClose={closeAbout}
         />
       )}
 
