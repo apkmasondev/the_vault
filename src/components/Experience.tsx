@@ -72,9 +72,11 @@ const cueCopy: Record<TimelineCue, readonly [string, string?]> = {
   released: ['CONTAINMENT RELEASED', undefined],
   warning: ['DO NOT OPEN.', undefined],
   opening: ['CONTAINMENT APERTURE', 'OPENING'],
-  object: ['OBJECT: UNKNOWN', undefined],
-  origin: ['ORIGIN: UNKNOWN', undefined],
-  stability: ['STABILITY: 03%', undefined],
+  // The three reveal beats escalate — classification fails, then it reacts to
+  // you, then it is plainly alive — rather than reading as three gauges.
+  object: ['OBJECT: UNKNOWN', 'NO MATCH ON RECORD'],
+  origin: ['ORIGIN: UNKNOWN', 'IT RESPONDS TO CONTACT'],
+  stability: ['IT IS AWAKE', 'STABILITY FALLING'],
   failure: ['CONTAINMENT FAILURE', undefined],
   final: ['THE VAULT', 'AN INTERACTIVE WEBGL EXPERIMENT'],
 };
@@ -122,11 +124,12 @@ export const Experience = ({
   // Scroll geometry, kept outside the loop so seeking can use it too.
   const sectionTopRef = useRef(0);
   const scrollDistanceRef = useRef(1);
+  const frameScaleRef = useRef(1);
   const directorRef = useRef(new ScrollDirector());
   const cinematicRef = useRef(false);
   const contactsRef = useRef(0);
   const chargeRef = useRef(0);
-  const holdRef = useRef({ active: false, dragging: false, startX: 0, lastX: 0 });
+  const holdRef = useRef({ active: false, dragging: false, startX: 0, startY: 0, lastX: 0 });
   const resonantReleasesRef = useRef(0);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
@@ -140,6 +143,7 @@ export const Experience = ({
   const [debugVisible, setDebugVisible] = useState(false);
   const [artifactResponding, setArtifactResponding] = useState(false);
   const [charging, setCharging] = useState(false);
+  const [carrying, setCarrying] = useState(false);
   const [resonant, setResonant] = useState(false);
   const sources = useMemo(selectVideoSources, []);
 
@@ -302,6 +306,13 @@ export const Experience = ({
       if (!section) return;
       sectionTopRef.current = section.getBoundingClientRect().top + window.scrollY;
       scrollDistanceRef.current = Math.max(1, section.offsetHeight - window.innerHeight);
+      // The scene belongs inside the film, which is letterboxed on tall
+      // viewports, so it is scaled against the poster's rendered height. Held in
+      // a ref because the renderer is imported lazily and may not exist yet.
+      const frame = posterRef.current?.getBoundingClientRect();
+      if (frame && frame.height > 0) {
+        frameScaleRef.current = frame.height / window.innerHeight;
+      }
       rendererRef.current?.resize();
     };
 
@@ -380,6 +391,7 @@ export const Experience = ({
         stage?.style.setProperty('--charge', chargeRef.current.toFixed(3));
 
         const bands = readAudioBands(now);
+        rendererRef.current?.setFrameScale(frameScaleRef.current);
         rendererRef.current?.update({
           progress: visualProgress,
           deltaSeconds,
@@ -469,26 +481,40 @@ export const Experience = ({
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
 
-  const beginHold = (clientX: number): void => {
-    holdRef.current = { active: true, dragging: false, startX: clientX, lastX: clientX };
+  const beginHold = (clientX: number, clientY: number): void => {
+    holdRef.current = {
+      active: true,
+      dragging: false,
+      startX: clientX,
+      startY: clientY,
+      lastX: clientX,
+    };
     setCharging(true);
     onChargeStart();
   };
 
-  const trackHold = (clientX: number): void => {
+  const trackHold = (clientX: number, clientY: number): void => {
     const hold = holdRef.current;
     if (!hold.active) return;
     const delta = clientX - hold.lastX;
     hold.lastX = clientX;
-    if (!hold.dragging && Math.abs(clientX - hold.startX) > DRAG_THRESHOLD_PX) {
-      // A drag is a different gesture; whatever charge accrued is given back.
+    const travelled = Math.hypot(clientX - hold.startX, clientY - hold.startY);
+    if (!hold.dragging && travelled > DRAG_THRESHOLD_PX) {
+      // Moving is a different gesture from holding, so the charge is given back.
       hold.dragging = true;
       chargeRef.current = 0;
       setCharging(false);
+      setCarrying(true);
       onChargeRelease(0);
     }
-    // Dragging right turns the object's face to the right.
-    if (hold.dragging) rendererRef.current?.addSpin((delta / window.innerWidth) * 14);
+    if (!hold.dragging) return;
+    // The object is carried to the pointer, and spun by the sideways component.
+    rendererRef.current?.setGrab(
+      true,
+      (clientX / window.innerWidth) * 2 - 1,
+      (clientY / window.innerHeight) * 2 - 1,
+    );
+    rendererRef.current?.addSpin((delta / window.innerWidth) * 9);
   };
 
   const endHold = (): void => {
@@ -496,9 +522,11 @@ export const Experience = ({
     if (!hold.active) return;
     const charge = chargeRef.current;
     const wasDragging = hold.dragging;
-    holdRef.current = { active: false, dragging: false, startX: 0, lastX: 0 };
+    holdRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0 };
     setCharging(false);
+    setCarrying(false);
     chargeRef.current = 0;
+    rendererRef.current?.setGrab(false);
     onChargeRelease(wasDragging ? 0 : charge);
     if (wasDragging || !rendererRef.current?.release(charge)) return;
 
@@ -523,8 +551,10 @@ export const Experience = ({
     contactsRef.current = 0;
     chargeRef.current = 0;
     resonantReleasesRef.current = 0;
-    holdRef.current = { active: false, dragging: false, startX: 0, lastX: 0 };
+    holdRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0 };
+    rendererRef.current?.setGrab(false);
     setArtifactResponding(false);
+    setCarrying(false);
     setCharging(false);
     setResonant(false);
     setHasScrolled(false);
@@ -616,21 +646,21 @@ export const Experience = ({
           {artifactInteractive && !webglFailed && (
             <>
               <button
-                className={`artifact-hit-target${charging ? ' is-charging' : ''}`}
+                className={`artifact-hit-target${charging ? ' is-charging' : ''}${carrying ? ' is-carrying' : ''}`}
                 type="button"
-                aria-label="Hold to charge the object, drag sideways to turn it"
+                aria-label="Hold the object to charge it, or drag to carry it"
                 onPointerDown={(event) => {
                   event.currentTarget.setPointerCapture(event.pointerId);
-                  beginHold(event.clientX);
+                  beginHold(event.clientX, event.clientY);
                 }}
-                onPointerMove={(event) => trackHold(event.clientX)}
+                onPointerMove={(event) => trackHold(event.clientX, event.clientY)}
                 onPointerUp={endHold}
                 onPointerCancel={endHold}
                 onLostPointerCapture={endHold}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return;
                   event.preventDefault();
-                  if (!holdRef.current.active) beginHold(0);
+                  if (!holdRef.current.active) beginHold(0, 0);
                 }}
                 onKeyUp={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -639,13 +669,15 @@ export const Experience = ({
                 }}
               />
               <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
-                {resonant
-                  ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
-                  : charging
-                    ? 'CHARGING — RELEASE TO DISCHARGE'
-                    : artifactResponding
-                      ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
-                      : 'HOLD THE OBJECT · DRAG TO TURN'}
+                {carrying
+                  ? 'THE OBJECT FOLLOWS YOU'
+                  : resonant
+                    ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
+                    : charging
+                      ? 'CHARGING — RELEASE TO DISCHARGE'
+                      : artifactResponding
+                        ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
+                        : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
               </p>
             </>
           )}
@@ -684,7 +716,9 @@ export const Experience = ({
             </div>
           )}
 
-          <div className="narrative" aria-hidden="true">
+          {/* Keyed on the cue so each beat remounts and replays its entrance
+              instead of the text swapping in place. */}
+          <div className="narrative" key={cue} aria-hidden="true">
             <p className="narrative__primary">{primary}</p>
             {secondary && <p className="narrative__secondary">{secondary}</p>}
           </div>

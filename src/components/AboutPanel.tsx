@@ -112,8 +112,8 @@ export const AboutPanel = ({
       <div className="about__inner">
         <header className="about__header">
           <div>
-            <p className="eyebrow">Technical record</p>
-            <h2 id="about-title">HOW THE VAULT WORKS</h2>
+            <p className="eyebrow">Containment system V-07</p>
+            <h2 id="about-title">ABOUT THE VAULT</h2>
           </div>
           <button className="about__close" type="button" onClick={onClose} ref={closeRef}>
             CLOSE
@@ -121,12 +121,40 @@ export const AboutPanel = ({
           </button>
         </header>
 
-        <section className="about__section">
-          <h3>What this is</h3>
+        <section className="about__section about__section--lead">
+          <h3>The premise</h3>
+          <p className="about__lead">
+            Something was sealed in here long enough that the paperwork outlived the people who
+            filed it. The door still works. You are the one turning the wheel.
+          </p>
           <p>
-            A containment chamber that opens as you scroll, and an object inside it that responds
-            when you touch it. There is no video player and no scroll animation library — the page
-            holds a single number between zero and one, and everything you see is derived from it.
+            There is no plot to follow and nothing to win. The chamber opens at exactly the speed
+            you open it, and stops when you stop. What is inside is not inert — it takes light from
+            being held, it leans toward your hand, and it keeps count of every time you reach for
+            it. Whether you touch it at all is the only real decision the piece asks of you, and
+            the record at the end reads differently depending on what you chose.
+          </p>
+        </section>
+
+        {live && (
+          <section className="about__section">
+            <h3>Finding your way around</h3>
+            <ul className="about__guide">
+              <li><span>Scroll</span>Everything is tied to how far down the page you are. Scroll back and the door closes again.</li>
+              <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
+              <li><span>Drag</span>Pull it and it comes with you, with weight behind it, then swings back through the middle.</li>
+              <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
+              <li><span>Play it for me</span>Hands off, if you would rather just watch. Any scroll takes control back.</li>
+            </ul>
+          </section>
+        )}
+
+        <section className="about__section about__section--divider">
+          <h3>How it is made</h3>
+          <p>
+            The rest of this is for anyone who wants to look behind it. There is no video player
+            and no animation library in here: the page holds one number between zero and one, and
+            everything you have just seen is derived from it.
           </p>
         </section>
 
@@ -163,17 +191,22 @@ export const AboutPanel = ({
         </section>
 
         <section className="about__section">
-          <h3>Touching the object</h3>
+          <h3>Why the object feels like an object</h3>
           <p>
-            Press and hold it to feed the core. The fissures widen, the surface swells, the
-            particulate is pushed outward and a synthesised tone climbs with the stored charge.
-            Let go and it leaves as a shockwave through the geometry. Drag sideways instead and the
-            object spins, carrying its momentum until friction takes it back.
+            Its body is nearly black. The light you see is escaping along a narrow band where a
+            noise field crosses a threshold, which is what makes those read as cracks rather than
+            patches, and that band widens as charge builds. Holding it speeds the churn underneath
+            and drives a tone that climbs with the stored energy.
+          </p>
+          <p>
+            Carrying it runs on a spring rather than on the pointer directly: stiff and damped
+            while you hold it so it tracks your hand, slack and underdamped when you let go so it
+            swings back through the middle and settles. The faster you haul it, the more it draws
+            out along the direction of travel and pinches across it, the way a heavy drop behaves.
           </p>
           <p>
             While the soundtrack plays it is analysed live, and its low band displaces the surface —
-            the object is breathing in time with what you are hearing. Whether you ever reached for
-            it, and how hard, is written into the session record at the end.
+            the object is breathing in time with what you are hearing.
           </p>
         </section>
 
@@ -221,6 +254,15 @@ export const AboutPanel = ({
             <li><span>Delivery</span>GitHub Actions to GitHub Pages</li>
             <li><span>Third parties</span>none — no fonts, analytics, trackers or remote media</li>
           </ul>
+        </section>
+
+        <section className="about__section">
+          <h3>Who made this</h3>
+          <p>
+            Built by apkmason as a portfolio piece, to find out how much presence a browser tab can
+            carry with nothing loaded from anywhere else. The source renders and the soundtrack are
+            original; everything between them is hand-written.
+          </p>
         </section>
 
         <footer className="about__footer">

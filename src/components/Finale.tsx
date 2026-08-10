@@ -7,11 +7,11 @@ interface FinaleProps {
 
 const lead = (contacts: number, resonant: boolean): string => {
   if (resonant) {
-    return 'Sustained contact drove the core past its resonant threshold. Whatever answered was not containment failure.';
+    return 'You held it until it answered. Whatever came back through the breach was not a containment failure — it was a reply.';
   }
   return contacts > 0
-    ? 'Direct contact amplified the signal. Containment failed at three percent stability.'
-    : 'The object was never touched. Containment failed at three percent stability regardless.';
+    ? 'You reached in, and it reached back. The chamber gave way a few seconds later.'
+    : 'You never touched it. The chamber gave way anyway, in its own time.';
 };
 
 export const Finale = ({ contacts, resonant, onAbout, onReplay }: FinaleProps) => (

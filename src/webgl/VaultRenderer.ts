@@ -10,9 +10,11 @@ const coreVertexShader = /* glsl */ `
   uniform float uCharge;
   uniform float uShock;
   uniform vec3 uAudio;
+  uniform vec3 uStretch;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
   varying float vNoise;
+  varying float vDetail;
 
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -42,17 +44,31 @@ const coreVertexShader = /* glsl */ `
   void main() {
     // Charging speeds the churn as well as swelling the surface.
     float churn = uTime * (1.0 + uCharge * 1.6);
-    float n = fbm(position * 1.85 + vec3(churn * 0.055, -churn * 0.035, churn * 0.025));
+    vec3 drift = vec3(churn * 0.055, -churn * 0.035, churn * 0.025);
+    // Low frequency shapes the silhouette; high frequency carries the veins,
+    // so the body can stay round while the cracks stay fine.
+    float n = fbm(position * 1.85 + drift);
+    float detail = fbm(position * 5.4 + drift * 0.55);
     float radius = length(position);
-    float pulseWave = uPulse * sin(radius * 12.0 - uTime * 8.0) * 0.07;
-    float shockWave = uShock * sin(radius * 22.0 - uTime * 19.0) * 0.13;
-    float breath = uAudio.x * 0.08 + uAudio.y * 0.028;
-    float swell = uCharge * (0.03 + n * 0.06);
-    vec3 displaced = position + normal * ((n - 0.5) * 0.18 + pulseWave + shockWave + breath + swell);
+    float pulseWave = uPulse * sin(radius * 12.0 - uTime * 8.0) * 0.06;
+    float shockWave = uShock * sin(radius * 22.0 - uTime * 19.0) * 0.11;
+    float breath = uAudio.x * 0.07 + uAudio.y * 0.025;
+    float swell = uCharge * (0.025 + n * 0.045);
+    float relief = (n - 0.5) * 0.085 + (detail - 0.5) * 0.022;
+    vec3 displaced = position + normal * (relief + pulseWave + shockWave + breath + swell);
+
+    // Hauling the object through the air draws it out along the direction of
+    // travel and pinches it across, the way a heavy drop of liquid behaves.
+    vec3 pull = vec3(uStretch.xy, 0.0);
+    float alignment = dot(normalize(position), pull);
+    displaced += pull * alignment * uStretch.z;
+    displaced -= normalize(position) * (1.0 - abs(alignment)) * uStretch.z * 0.35;
+
     vec4 world = modelMatrix * vec4(displaced, 1.0);
     vWorldPosition = world.xyz;
     vNormal = normalize(mat3(modelMatrix) * normal);
     vNoise = n;
+    vDetail = detail;
     gl_Position = projectionMatrix * viewMatrix * world;
   }
 `;
@@ -67,52 +83,43 @@ const coreFragmentShader = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
   varying float vNoise;
+  varying float vDetail;
 
   void main() {
     vec3 normal = normalize(vNormal);
     vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-    float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 2.4);
-    // The fissures widen as the core takes on charge.
-    float fissure = smoothstep(0.54 - uCharge * 0.13, 0.73, vNoise) - smoothstep(0.73, 0.88, vNoise);
+    float facingView = max(dot(normal, viewDirection), 0.0);
+    float fresnel = pow(1.0 - facingView, 2.6);
+
+    // Veins, not patches: light escapes only along the narrow band where the
+    // high-frequency field crosses its threshold, widening under charge.
+    float width = 0.016 + uCharge * 0.022;
+    float crack = abs(vDetail - 0.5);
+    float vein = 1.0 - smoothstep(0.0, width, crack);
+    float ember = 1.0 - smoothstep(0.0, width * 6.0, crack);
+
+    // Stone that has cooled unevenly, so the body is never a flat silhouette.
+    float relief = smoothstep(0.35, 0.72, vNoise);
+    float occlusion = mix(0.55, 1.0, relief);
+
     float facing = max(dot(normal, normalize(uPointer)), 0.0);
-    vec3 obsidian = vec3(0.018, 0.014, 0.012);
-    vec3 oldGold = vec3(0.68, 0.42, 0.18);
-    vec3 heat = vec3(0.94, 0.72, 0.39);
-    vec3 color = mix(obsidian, oldGold, fissure * 0.8 + fresnel * 0.32);
-    color += heat * (
-      fissure * (0.32 + uPulse * 0.4 + uCharge * 0.55)
-      + uFailure * fresnel * 0.12
-      + uAudio.z * fresnel * 0.22
-    );
+    vec3 obsidian = vec3(0.026, 0.022, 0.019);
+    vec3 oldGold = vec3(0.62, 0.40, 0.18);
+    vec3 heat = vec3(0.96, 0.74, 0.42);
+
+    // A dark body first, then a rim, then the light coming out of the cracks.
+    vec3 color = obsidian * occlusion;
+    color += oldGold * fresnel * 0.46;
+    // A hard glint keeps it reading as polished stone rather than matte clay.
+    color += vec3(1.0, 0.88, 0.66) * pow(facingView, 22.0) * 0.09;
+    color += heat * ember * (0.05 + uCharge * 0.1) * occlusion;
+    color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85);
     // The side under the pointer runs hotter, so the object tracks your hand.
-    color += heat * facing * fissure * uCharge * 0.28;
-    float alpha = uReveal * (0.92 + fresnel * 0.08);
+    color += heat * facing * vein * uCharge * 0.35;
+    color += heat * (uFailure * fresnel * 0.14 + uAudio.z * fresnel * 0.2);
+
+    float alpha = uReveal * (0.9 + fresnel * 0.1);
     gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-const shellVertexShader = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vWorldPosition;
-  void main() {
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = world.xyz;
-    vNormal = normalize(mat3(modelMatrix) * normal);
-    gl_Position = projectionMatrix * viewMatrix * world;
-  }
-`;
-
-const shellFragmentShader = /* glsl */ `
-  uniform float uReveal;
-  uniform float uPulse;
-  uniform float uCharge;
-  varying vec3 vNormal;
-  varying vec3 vWorldPosition;
-  void main() {
-    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-    float fresnel = pow(1.0 - abs(dot(normalize(vNormal), viewDirection)), 3.2);
-    float alpha = fresnel * (0.16 + uPulse * 0.2 + uCharge * 0.34) * uReveal;
-    gl_FragColor = vec4(vec3(0.78, 0.52, 0.25), alpha);
   }
 `;
 
@@ -121,6 +128,7 @@ const particleVertexShader = /* glsl */ `
   uniform float uReveal;
   uniform float uPulse;
   uniform float uCharge;
+  uniform float uPixelScale;
   uniform vec3 uAudio;
   varying float vAlpha;
   void main() {
@@ -130,8 +138,10 @@ const particleVertexShader = /* glsl */ `
     // Charge and impacts push the field outward from the core.
     p.xy *= 1.0 + (uPulse * 0.16 + uCharge * 0.1 + uAudio.x * 0.06) / distanceFromCore;
     vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
-    gl_PointSize = (2.0 + fract(p.x * 17.13) * 2.2) * (260.0 / -mvPosition.z);
-    vAlpha = (0.12 + fract(p.z * 23.17) * 0.45) * (0.22 + uReveal * 0.78) * (1.0 + uAudio.y * 0.5);
+    // Sized against the drawing buffer so these stay fine embers at every
+    // resolution rather than becoming lens blobs on a small viewport.
+    gl_PointSize = (0.9 + fract(p.x * 17.13) * 1.5) * (17.0 / -mvPosition.z) * uPixelScale;
+    vAlpha = (0.1 + fract(p.z * 23.17) * 0.4) * (0.16 + uReveal * 0.84) * (1.0 + uAudio.y * 0.5);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -173,7 +183,7 @@ const fogFragmentShader = /* glsl */ `
     float radial = 1.0 - smoothstep(0.04, 0.62, length(centered));
     float mist = noise(vUv * 4.2 + vec2(uTime * 0.015, -uTime * 0.01));
     mist += noise(vUv * 8.0 - vec2(uTime * 0.009, 0.0)) * 0.35;
-    float alpha = (0.018 + uReveal * 0.1 + uFailure * 0.025 + uCharge * 0.03) * mist * (0.35 + radial * 0.65);
+    float alpha = (0.012 + uReveal * 0.045 + uFailure * 0.02 + uCharge * 0.02) * mist * (0.35 + radial * 0.65);
     gl_FragColor = vec4(0.62, 0.54, 0.4, alpha);
   }
 `;
@@ -201,14 +211,20 @@ export class VaultRenderer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   private readonly artifact = new THREE.Group();
+  /** Everything the film frames, scaled together to match that frame. */
+  private readonly world = new THREE.Group();
   private readonly coreMaterial: THREE.ShaderMaterial;
-  private readonly shellMaterial: THREE.ShaderMaterial;
   private readonly particleMaterial: THREE.ShaderMaterial;
   private readonly fogMaterial: THREE.ShaderMaterial;
   private readonly particleGeometry: THREE.BufferGeometry;
   private readonly starGeometry: THREE.BufferGeometry;
   private readonly haloTexture: THREE.CanvasTexture;
   private readonly pointerDirection = new THREE.Vector3(0, 0, 1);
+  private readonly grabTarget = new THREE.Vector2();
+  private readonly grabOffset = new THREE.Vector2();
+  private readonly grabVelocity = new THREE.Vector2();
+  private grabbed = false;
+  private frameScale = 1;
   private readonly frameTimes = new Float32Array(180);
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
@@ -265,24 +281,12 @@ export class VaultRenderer {
         uShock: { value: 0 },
         uAudio: { value: new THREE.Vector3() },
         uPointer: { value: new THREE.Vector3(0, 0, 1) },
+        uStretch: { value: new THREE.Vector3() },
       },
       vertexShader: coreVertexShader,
       fragmentShader: coreFragmentShader,
       transparent: true,
       depthWrite: false,
-    });
-    this.shellMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        uReveal: { value: 0 },
-        uPulse: { value: 0 },
-        uCharge: { value: 0 },
-      },
-      vertexShader: shellVertexShader,
-      fragmentShader: shellFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
     });
     this.particleMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -290,6 +294,7 @@ export class VaultRenderer {
         uReveal: { value: 0 },
         uPulse: { value: 0 },
         uCharge: { value: 0 },
+        uPixelScale: { value: 1 },
         uAudio: { value: new THREE.Vector3() },
       },
       vertexShader: particleVertexShader,
@@ -310,14 +315,11 @@ export class VaultRenderer {
       transparent: true,
       depthWrite: false,
     });
-    this.materials.push(this.coreMaterial, this.shellMaterial, this.particleMaterial, this.fogMaterial);
+    this.materials.push(this.coreMaterial, this.particleMaterial, this.fogMaterial);
 
     const coreGeometry = new THREE.IcosahedronGeometry(0.82, this.quality.geometryDetail);
-    const shellGeometry = new THREE.IcosahedronGeometry(0.9, Math.max(2, this.quality.geometryDetail - 1));
-    this.geometries.push(coreGeometry, shellGeometry);
-    const core = new THREE.Mesh(coreGeometry, this.coreMaterial);
-    const shell = new THREE.Mesh(shellGeometry, this.shellMaterial);
-    this.artifact.add(core, shell);
+    this.geometries.push(coreGeometry);
+    this.artifact.add(new THREE.Mesh(coreGeometry, this.coreMaterial));
 
     this.haloTexture = this.createHaloTexture();
     const haloMaterial = new THREE.SpriteMaterial({
@@ -331,7 +333,7 @@ export class VaultRenderer {
     this.materials.push(haloMaterial);
     const halo = new THREE.Sprite(haloMaterial);
     halo.name = 'halo';
-    halo.scale.set(3.8, 3.8, 1);
+    halo.scale.set(2.4, 2.4, 1);
     halo.position.z = -0.35;
     this.artifact.add(halo);
 
@@ -345,14 +347,15 @@ export class VaultRenderer {
     this.geometries.push(this.particleGeometry);
     const particles = new THREE.Points(this.particleGeometry, this.particleMaterial);
     particles.position.z = -0.2;
-    this.scene.add(particles);
+    this.world.add(particles);
 
     const fogGeometry = new THREE.PlaneGeometry(11.5, 7);
     this.geometries.push(fogGeometry);
     const fog = new THREE.Mesh(fogGeometry, this.fogMaterial);
     fog.position.z = -2.2;
-    this.scene.add(fog);
-    this.scene.add(this.artifact);
+    this.world.add(fog);
+    this.world.add(this.artifact);
+    this.scene.add(this.world);
 
     this.artifact.visible = false;
     if (this.quality.postProcessing) this.postChain = new PostChain(this.renderer);
@@ -387,10 +390,6 @@ export class VaultRenderer {
       .copy(this.pointerDirection.set(pointerX, -pointerY, 1))
       .normalize();
 
-    this.shellMaterial.uniforms.uReveal!.value = reveal;
-    this.shellMaterial.uniforms.uPulse!.value = this.pulseAmount;
-    this.shellMaterial.uniforms.uCharge!.value = charge;
-
     const particles = this.particleMaterial.uniforms;
     particles.uTime!.value = this.elapsed;
     particles.uReveal!.value = reveal;
@@ -406,24 +405,41 @@ export class VaultRenderer {
     const halo = this.artifact.getObjectByName('halo');
     if (halo instanceof THREE.Sprite) {
       halo.material.opacity = reveal * (
-        0.18 + this.pulseAmount * 0.16 + failure * 0.08 + charge * 0.22 + state.audioLow * 0.12
+        0.1 + this.pulseAmount * 0.12 + failure * 0.06 + charge * 0.16 + state.audioLow * 0.08
       );
       halo.position.x = pointerX * 0.06;
       halo.position.y = -pointerY * 0.04;
-      const haloScale = 3.8 + charge * 0.5 + this.shock * 1.6;
+      const haloScale = 2.4 + charge * 0.45 + this.shock * 1.2;
       halo.scale.set(haloScale, haloScale, 1);
     }
+
+    // Held: stiff and well damped, so it tracks the hand. Released: slack and
+    // underdamped, so it swings back through centre and settles.
+    const stiffness = this.grabbed ? 135 : 34;
+    const damping = this.grabbed ? 19 : 6.2;
+    const springStep = Math.min(deltaSeconds, 1 / 60);
+    this.grabVelocity.x += ((this.grabTarget.x - this.grabOffset.x) * stiffness - this.grabVelocity.x * damping) * springStep;
+    this.grabVelocity.y += ((this.grabTarget.y - this.grabOffset.y) * stiffness - this.grabVelocity.y * damping) * springStep;
+    this.grabOffset.x += this.grabVelocity.x * springStep;
+    this.grabOffset.y += this.grabVelocity.y * springStep;
+
+    const speed = this.grabVelocity.length();
+    const stretchAmount = Math.min(0.34, speed * 0.055);
+    const stretch = this.coreMaterial.uniforms.uStretch!.value as THREE.Vector3;
+    if (speed > 0.001) stretch.set(this.grabVelocity.x / speed, this.grabVelocity.y / speed, stretchAmount);
+    else stretch.set(0, 0, 0);
 
     const nearFreeze = failure > 0.1 ? 0.15 : 1;
     // Drag momentum decays exponentially and rides on top of the idle drift.
     this.spinVelocity *= Math.exp(-deltaSeconds * 2.4);
     this.artifact.rotation.y += (0.11 * nearFreeze + this.spinVelocity) * deltaSeconds;
     this.artifact.rotation.x += deltaSeconds * 0.035 * nearFreeze;
-    this.artifact.rotation.z = pointerX * 0.025;
-    this.artifact.position.x = pointerX * 0.08;
-    this.artifact.position.y = Math.sin(this.elapsed * 0.42) * 0.08 - pointerY * 0.035;
+    this.artifact.rotation.z = pointerX * 0.025 + this.grabOffset.x * 0.06;
+    this.artifact.position.x = pointerX * 0.08 + this.grabOffset.x;
+    this.artifact.position.y = Math.sin(this.elapsed * 0.42) * 0.08 - pointerY * 0.035 + this.grabOffset.y;
     const scale = 0.65 + reveal * 0.35 + this.pulseAmount * 0.035 + charge * 0.07;
     this.artifact.scale.setScalar(scale);
+    this.world.scale.setScalar(this.frameScale);
 
     // The camera loses its footing as containment gives way, and again on impact.
     const shake = (failure * 0.02 + this.shock * 0.028) * reveal;
@@ -435,7 +451,7 @@ export class VaultRenderer {
         time: this.elapsed,
         shock: this.shock,
         bloom: 0.55 + charge * 0.3 + failure * 0.18,
-        aberration: 0.4 + charge * 1.1 + failure * 1.6,
+        aberration: 0.4 + charge * 0.55 + failure * 1.4,
         grain: 0.035 + failure * 0.05,
       });
     } else {
@@ -451,6 +467,26 @@ export class VaultRenderer {
    */
   getGlow(): number {
     return clamp(this.reveal * (this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7));
+  }
+
+  /**
+   * Binds the scene to the film. The footage is letterboxed on a tall viewport,
+   * so without this the object is sized against the window and spills out of
+   * the frame it is supposed to be inside.
+   */
+  setFrameScale(scale: number): void {
+    this.frameScale = clamp(scale, 0.2, 1);
+  }
+
+  /**
+   * Takes hold of the object, or lets it go. Coordinates are normalised screen
+   * space; while held the object chases them on a spring, and on release the
+   * same spring — now underdamped — carries it back through centre.
+   */
+  setGrab(active: boolean, x = 0, y = 0): void {
+    this.grabbed = active;
+    if (active) this.grabTarget.set(clamp(x, -1, 1) * 1.55, clamp(-y, -1, 1) * 1.05);
+    else this.grabTarget.set(0, 0);
   }
 
   /** Releases stored charge as an impact. Returns false if there was none. */
@@ -474,6 +510,7 @@ export class VaultRenderer {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.renderer.getDrawingBufferSize(this.drawingBuffer);
+    this.particleMaterial.uniforms.uPixelScale!.value = Math.max(0.6, this.drawingBuffer.y / 900);
     this.postChain?.setSize(
       Math.max(1, Math.floor(this.drawingBuffer.x)),
       Math.max(1, Math.floor(this.drawingBuffer.y)),
@@ -487,6 +524,10 @@ export class VaultRenderer {
     this.reveal = 0;
     this.charge = 0;
     this.spinVelocity = 0;
+    this.grabbed = false;
+    this.grabTarget.set(0, 0);
+    this.grabOffset.set(0, 0);
+    this.grabVelocity.set(0, 0);
     this.camera.position.set(0, 0, 6);
     this.artifact.rotation.set(0, 0, 0);
     this.artifact.visible = false;

@@ -68,5 +68,13 @@ export const MEDIA = {
 /** Hard ceiling on the entry loader so a stalled asset can never trap a visitor. */
 export const LOAD_WATCHDOG_MS = 8_000;
 
-export const asset = (path: string): string =>
-  `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+/**
+ * Resolves a delivered asset. Media carries a content stamp because everything
+ * under `public/` keeps its filename across re-encodes, and without the stamp a
+ * returning visitor would be served the previous cut from cache.
+ */
+export const asset = (path: string): string => {
+  const clean = path.replace(/^\/+/, '');
+  const stamped = clean.startsWith('media/') ? `${clean}?v=${__MEDIA_VERSION__}` : clean;
+  return `${import.meta.env.BASE_URL}${stamped}`;
+};

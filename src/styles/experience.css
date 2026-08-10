@@ -165,21 +165,9 @@
   touch-action: pan-y;
 }
 
-.artifact-hit-target.is-charging {
+.artifact-hit-target.is-charging,
+.artifact-hit-target.is-carrying {
   cursor: grabbing;
-}
-
-/* A ring that fills as the core takes on charge. */
-.artifact-hit-target::after {
-  position: absolute;
-  inset: -6%;
-  content: '';
-  border: 1px solid rgba(215, 183, 122, calc(0.16 + var(--charge, 0) * 0.6));
-  border-radius: 50%;
-  opacity: calc(var(--charge, 0) * 0.9);
-  transform: scale(calc(1 + var(--charge, 0) * 0.09));
-  box-shadow: 0 0 calc(var(--charge, 0) * 3rem) rgba(215, 183, 122, calc(var(--charge, 0) * 0.22));
-  pointer-events: none;
 }
 
 .artifact-hit-target:focus-visible {
@@ -558,6 +546,19 @@
 .narrative__secondary {
   margin: 0;
   text-transform: uppercase;
+  animation: beat-in 900ms cubic-bezier(0.16, 0.9, 0.24, 1) both;
+}
+
+.narrative__secondary {
+  animation-delay: 140ms;
+}
+
+@keyframes beat-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    letter-spacing: 0.5em;
+  }
 }
 
 .narrative__primary {
@@ -670,8 +671,8 @@
 
 .finale__record {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: min(42rem, 100%);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: min(46rem, 100%);
   margin: 2rem 0 0;
   padding: 1.15rem 0;
   border-top: 1px solid rgba(232, 228, 219, 0.12);
@@ -886,6 +887,48 @@
   color: rgba(232, 228, 219, 0.72);
   font-size: 0.86rem;
   line-height: 1.75;
+}
+
+.about__section--lead {
+  padding-top: 2.6rem;
+}
+
+.about__lead {
+  color: var(--text) !important;
+  font-size: clamp(0.95rem, 1.9vw, 1.16rem) !important;
+  line-height: 1.65 !important;
+}
+
+/* Marks the turn from the story to the engineering. */
+.about__section--divider {
+  margin-top: 1.4rem;
+  padding-top: 2.1rem;
+  border-top: 1px solid var(--line);
+}
+
+.about__guide {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about__guide li {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.4rem 1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+  color: rgba(232, 228, 219, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.about__guide span {
+  color: var(--accent);
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.54rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .sequence-map {
@@ -1290,7 +1333,8 @@
     font-size: 0.46rem;
   }
 
-  .about__stack li {
+  .about__stack li,
+  .about__guide li {
     grid-template-columns: 1fr;
     gap: 0.3rem;
   }
@@ -1311,8 +1355,25 @@
     font-size: clamp(1.8rem, 10vw, 3rem);
   }
 
+  .finale__record {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .finale__record div {
-    padding-inline: 0.45rem;
+    padding: 0.55rem 0.45rem;
+  }
+
+  /* With two columns the vertical rules must follow the rows, not the source order. */
+  .finale__record div + div {
+    border-left: 0;
+  }
+
+  .finale__record div:nth-child(2n) {
+    border-left: 1px solid rgba(232, 228, 219, 0.1);
+  }
+
+  .finale__record div:nth-child(n + 3) {
+    border-top: 1px solid rgba(232, 228, 219, 0.1);
   }
 
   .finale__record dd {
