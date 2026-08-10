@@ -11,6 +11,8 @@ const coreVertexShader = /* glsl */ `
   uniform float uShock;
   uniform vec3 uAudio;
   uniform vec3 uStretch;
+  uniform vec3 uSplitAxis;
+  uniform float uSplit;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
   varying float vNoise;
@@ -63,6 +65,11 @@ const coreVertexShader = /* glsl */ `
     float alignment = dot(normalize(position), pull);
     displaced += pull * alignment * uStretch.z;
     displaced -= normalize(position) * (1.0 - abs(alignment)) * uStretch.z * 0.35;
+
+    // Thrown hard enough, it comes apart: the two halves separate along the
+    // throw, and the seam pulls back as the break heals.
+    float side = dot(normalize(position), uSplitAxis) >= 0.0 ? 1.0 : -1.0;
+    displaced += uSplitAxis * side * uSplit;
 
     vec4 world = modelMatrix * vec4(displaced, 1.0);
     vWorldPosition = world.xyz;
@@ -155,6 +162,83 @@ const particleFragmentShader = /* glsl */ `
   }
 `;
 
+/**
+ * Large defocused motes drifting in the opened chamber. Deliberately few, very
+ * faint and very soft — the atmosphere comes from their movement, not from
+ * their presence, and anything heavier reads as dirt on the lens.
+ */
+const moteVertexShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uOpen;
+  uniform float uPixelScale;
+  varying float vAlpha;
+
+  void main() {
+    vec3 p = position;
+    float seed = fract(p.x * 13.71 + p.y * 7.33 + 0.37);
+    // Convection: they rise slowly and sway, wrapping around the chamber.
+    p.y = mod(p.y + uTime * (0.018 + seed * 0.042) + 2.2, 4.4) - 2.2;
+    p.x += sin(uTime * (0.05 + seed * 0.07) + seed * 26.0) * 0.34;
+    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+    gl_PointSize = (26.0 + seed * 54.0) * (13.0 / -mvPosition.z) * uPixelScale;
+    // Fading in at the edges of their travel keeps them from popping.
+    float edge = 1.0 - smoothstep(1.5, 2.2, abs(p.y));
+    vAlpha = uOpen * edge * (0.075 + seed * 0.105);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const moteFragmentShader = /* glsl */ `
+  varying float vAlpha;
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    // A soft body with a slightly firmer edge, the way defocused light behaves.
+    float body = pow(1.0 - d, 1.7);
+    float rim = smoothstep(0.92, 0.66, d) * 0.3;
+    gl_FragColor = vec4(vec3(0.88, 0.76, 0.57), (body * 0.6 + rim) * vAlpha);
+  }
+`;
+
+/**
+ * The molten interior. The scene carries no depth buffer, so this cannot be
+ * hidden behind the shell and revealed by the gap. Instead its light is
+ * concentrated along the seam and added over the top, which reads as light
+ * escaping the break rather than as a ball inside a ball.
+ */
+const heartVertexShader = /* glsl */ `
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+  varying vec3 vLocal;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = world.xyz;
+    vLocal = position;
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+const heartFragmentShader = /* glsl */ `
+  uniform float uSplit;
+  uniform float uReveal;
+  uniform float uTime;
+  uniform vec3 uSplitAxis;
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+  varying vec3 vLocal;
+  void main() {
+    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+    float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDirection), 0.0), 1.5);
+    float flicker = 0.82 + sin(uTime * 7.3) * 0.12 + sin(uTime * 17.1) * 0.06;
+    // Brightest across the seam, falling away toward the poles of the break.
+    float seam = 1.0 - smoothstep(0.0, 0.62, abs(dot(normalize(vLocal), uSplitAxis)));
+    vec3 color = mix(vec3(1.0, 0.44, 0.11), vec3(1.0, 0.97, 0.9), fresnel * 0.6 + seam * 0.4);
+    float exposure = uReveal * smoothstep(0.01, 0.08, uSplit) * flicker * (0.25 + seam * 1.35);
+    gl_FragColor = vec4(color * exposure, exposure * 0.85);
+  }
+`;
+
 const fogVertexShader = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -188,6 +272,9 @@ const fogFragmentShader = /* glsl */ `
   }
 `;
 
+/** Release speed, in world units per second, that breaks the object open. */
+const THROW_SPEED = 4.2;
+
 export interface RendererDiagnostics {
   readonly tier: QualityTier;
   readonly dpr: number;
@@ -214,10 +301,15 @@ export class VaultRenderer {
   /** Everything the film frames, scaled together to match that frame. */
   private readonly world = new THREE.Group();
   private readonly coreMaterial: THREE.ShaderMaterial;
+  private readonly heartMaterial: THREE.ShaderMaterial;
+  private readonly moteMaterial: THREE.ShaderMaterial;
   private readonly particleMaterial: THREE.ShaderMaterial;
   private readonly fogMaterial: THREE.ShaderMaterial;
   private readonly particleGeometry: THREE.BufferGeometry;
   private readonly starGeometry: THREE.BufferGeometry;
+  private readonly moteGeometry: THREE.BufferGeometry;
+  private readonly heart: THREE.Mesh;
+  private readonly splitAxis = new THREE.Vector3(1, 0, 0);
   private readonly haloTexture: THREE.CanvasTexture;
   private readonly pointerDirection = new THREE.Vector3(0, 0, 1);
   private readonly grabTarget = new THREE.Vector2();
@@ -225,6 +317,8 @@ export class VaultRenderer {
   private readonly grabVelocity = new THREE.Vector2();
   private grabbed = false;
   private frameScale = 1;
+  private split = 0;
+  private splitVelocity = 0;
   private readonly frameTimes = new Float32Array(180);
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
@@ -282,11 +376,38 @@ export class VaultRenderer {
         uAudio: { value: new THREE.Vector3() },
         uPointer: { value: new THREE.Vector3(0, 0, 1) },
         uStretch: { value: new THREE.Vector3() },
+        uSplitAxis: { value: new THREE.Vector3(1, 0, 0) },
+        uSplit: { value: 0 },
       },
       vertexShader: coreVertexShader,
       fragmentShader: coreFragmentShader,
       transparent: true,
       depthWrite: false,
+    });
+    this.heartMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uSplit: { value: 0 },
+        uReveal: { value: 0 },
+        uTime: { value: 0 },
+        uSplitAxis: { value: new THREE.Vector3(1, 0, 0) },
+      },
+      vertexShader: heartVertexShader,
+      fragmentShader: heartFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.moteMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpen: { value: 0 },
+        uPixelScale: { value: 1 },
+      },
+      vertexShader: moteVertexShader,
+      fragmentShader: moteFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
     this.particleMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -315,11 +436,21 @@ export class VaultRenderer {
       transparent: true,
       depthWrite: false,
     });
-    this.materials.push(this.coreMaterial, this.particleMaterial, this.fogMaterial);
+    this.materials.push(
+      this.coreMaterial,
+      this.heartMaterial,
+      this.moteMaterial,
+      this.particleMaterial,
+      this.fogMaterial,
+    );
 
     const coreGeometry = new THREE.IcosahedronGeometry(0.82, this.quality.geometryDetail);
-    this.geometries.push(coreGeometry);
-    this.artifact.add(new THREE.Mesh(coreGeometry, this.coreMaterial));
+    const heartGeometry = new THREE.IcosahedronGeometry(0.6, 3);
+    this.geometries.push(coreGeometry, heartGeometry);
+    // The interior is drawn first so the shell reads as being in front of it.
+    this.heart = new THREE.Mesh(heartGeometry, this.heartMaterial);
+    this.heart.renderOrder = 1;
+    this.artifact.add(new THREE.Mesh(coreGeometry, this.coreMaterial), this.heart);
 
     this.haloTexture = this.createHaloTexture();
     const haloMaterial = new THREE.SpriteMaterial({
@@ -349,6 +480,12 @@ export class VaultRenderer {
     particles.position.z = -0.2;
     this.world.add(particles);
 
+    this.moteGeometry = this.createPointGeometry(this.quality.motes, 3.4, false);
+    this.geometries.push(this.moteGeometry);
+    const motes = new THREE.Points(this.moteGeometry, this.moteMaterial);
+    motes.position.z = 0.6;
+    this.world.add(motes);
+
     const fogGeometry = new THREE.PlaneGeometry(11.5, 7);
     this.geometries.push(fogGeometry);
     const fog = new THREE.Mesh(fogGeometry, this.fogMaterial);
@@ -371,6 +508,13 @@ export class VaultRenderer {
     this.elapsed += deltaSeconds;
     this.pulseAmount = Math.max(0, this.pulseAmount - deltaSeconds * 0.72);
     this.shock = Math.max(0, this.shock - deltaSeconds * 1.55);
+
+    // The break heals on a stiff spring, so it flies open and snaps shut.
+    const splitStep = Math.min(deltaSeconds, 1 / 60);
+    this.splitVelocity += (-this.split * 190 - this.splitVelocity * 11) * splitStep;
+    this.split = Math.max(0, this.split + this.splitVelocity * splitStep);
+
+    const open = smoothstep(RAMPS.openFadeStart, RAMPS.openFadeEnd, progress);
     const reveal = smoothstep(RAMPS.revealFadeStart, RAMPS.revealFadeEnd, progress);
     const failure = smoothstep(RAMPS.failureFadeStart, RAMPS.failureFadeEnd, progress);
     this.reveal = reveal;
@@ -389,6 +533,18 @@ export class VaultRenderer {
     (core.uPointer!.value as THREE.Vector3)
       .copy(this.pointerDirection.set(pointerX, -pointerY, 1))
       .normalize();
+    core.uSplit!.value = this.split;
+    (core.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
+
+    this.heartMaterial.uniforms.uSplit!.value = this.split;
+    this.heartMaterial.uniforms.uReveal!.value = reveal;
+    this.heartMaterial.uniforms.uTime!.value = this.elapsed;
+    (this.heartMaterial.uniforms.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
+    // Swells out of the break rather than sitting still inside it.
+    this.heart.scale.setScalar(1 + this.split * 0.75);
+
+    this.moteMaterial.uniforms.uTime!.value = this.elapsed;
+    this.moteMaterial.uniforms.uOpen!.value = open;
 
     const particles = this.particleMaterial.uniforms;
     particles.uTime!.value = this.elapsed;
@@ -424,7 +580,8 @@ export class VaultRenderer {
     this.grabOffset.y += this.grabVelocity.y * springStep;
 
     const speed = this.grabVelocity.length();
-    const stretchAmount = Math.min(0.34, speed * 0.055);
+    // A broken object flails harder than an intact one.
+    const stretchAmount = Math.min(0.34, speed * 0.055) + this.split * 0.25;
     const stretch = this.coreMaterial.uniforms.uStretch!.value as THREE.Vector3;
     if (speed > 0.001) stretch.set(this.grabVelocity.x / speed, this.grabVelocity.y / speed, stretchAmount);
     else stretch.set(0, 0, 0);
@@ -466,7 +623,9 @@ export class VaultRenderer {
    * into the surrounding page.
    */
   getGlow(): number {
-    return clamp(this.reveal * (this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7));
+    return clamp(this.reveal * (
+      this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7 + this.split * 2.2
+    ));
   }
 
   /**
@@ -487,6 +646,32 @@ export class VaultRenderer {
     this.grabbed = active;
     if (active) this.grabTarget.set(clamp(x, -1, 1) * 1.55, clamp(-y, -1, 1) * 1.05);
     else this.grabTarget.set(0, 0);
+  }
+
+  /**
+   * Lets go. Returns true when it was let go hard enough to break open, so the
+   * caller can answer with sound and copy.
+   */
+  releaseGrab(): boolean {
+    const speed = this.grabVelocity.length();
+    this.setGrab(false);
+    if (speed < THROW_SPEED) return false;
+    return this.fracture(this.grabVelocity.x, this.grabVelocity.y);
+  }
+
+  /**
+   * Breaks the object open along the direction it was thrown. Refuses while a
+   * break is already healing, so it cannot be held permanently apart.
+   */
+  fracture(directionX: number, directionY: number): boolean {
+    if (this.split > 0.02) return false;
+    const length = Math.hypot(directionX, directionY);
+    if (length < 0.001) return false;
+    this.splitAxis.set(directionX / length, directionY / length, 0);
+    this.splitVelocity = 6.2;
+    this.shock = Math.min(1, this.shock + 0.85);
+    this.pulseAmount = Math.min(1, this.pulseAmount + 0.7);
+    return true;
   }
 
   /** Releases stored charge as an impact. Returns false if there was none. */
@@ -510,7 +695,9 @@ export class VaultRenderer {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.renderer.getDrawingBufferSize(this.drawingBuffer);
-    this.particleMaterial.uniforms.uPixelScale!.value = Math.max(0.6, this.drawingBuffer.y / 900);
+    const pixelScale = Math.max(0.6, this.drawingBuffer.y / 900);
+    this.particleMaterial.uniforms.uPixelScale!.value = pixelScale;
+    this.moteMaterial.uniforms.uPixelScale!.value = pixelScale;
     this.postChain?.setSize(
       Math.max(1, Math.floor(this.drawingBuffer.x)),
       Math.max(1, Math.floor(this.drawingBuffer.y)),
@@ -528,6 +715,8 @@ export class VaultRenderer {
     this.grabTarget.set(0, 0);
     this.grabOffset.set(0, 0);
     this.grabVelocity.set(0, 0);
+    this.split = 0;
+    this.splitVelocity = 0;
     this.camera.position.set(0, 0, 6);
     this.artifact.rotation.set(0, 0, 0);
     this.artifact.visible = false;
@@ -628,6 +817,7 @@ export class VaultRenderer {
     this.renderer.setPixelRatio(profile.dpr);
     this.particleGeometry.setDrawRange(0, Math.min(profile.particles, this.particleGeometry.getAttribute('position').count));
     this.starGeometry.setDrawRange(0, Math.min(profile.stars, this.starGeometry.getAttribute('position').count));
+    this.moteGeometry.setDrawRange(0, Math.min(profile.motes, this.moteGeometry.getAttribute('position').count));
     this.resize();
   }
 

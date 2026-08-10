@@ -30,6 +30,8 @@ export const TIMELINE = {
 export const RAMPS = {
   crossfadeStart: 0.552,
   crossfadeEnd: 0.572,
+  openFadeStart: 0.58,
+  openFadeEnd: 0.86,
   revealFadeStart: 0.835,
   revealFadeEnd: 0.925,
   failureFadeStart: 0.975,
@@ -62,7 +64,7 @@ export const MEDIA = {
   opening540: 'media/vault-opening-540-gop1.mp4',
   poster: 'media/vault-poster.webp',
   transition: 'media/vault-opening-transition.webp',
-  soundtrack: 'media/vault-of-iron-sleep.m4a',
+  soundtrack: 'media/vault-corroded-silence.m4a',
 } as const;
 
 /** Hard ceiling on the entry loader so a stalled asset can never trap a visitor. */

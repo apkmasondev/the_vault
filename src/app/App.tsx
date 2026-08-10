@@ -135,6 +135,8 @@ export const App = () => {
     if (amount > 0) audioRef.current?.impact(amount);
   }, []);
 
+  const soundFracture = useCallback((): void => audioRef.current?.fracture(), []);
+
   const updateVisibility = useCallback((visible: boolean): void => {
     if (visible) void audioRef.current?.resume();
     else void audioRef.current?.suspend();
@@ -170,6 +172,7 @@ export const App = () => {
           onChargeStart={startCharge}
           onChargeChange={changeCharge}
           onChargeRelease={releaseCharge}
+          onFracture={soundFracture}
           onVisibilityChange={updateVisibility}
           onCinematicChange={setCinematicRunning}
           onOpenAbout={openAbout}

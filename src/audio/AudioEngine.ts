@@ -140,6 +140,49 @@ export class AudioEngine {
     oscillator.stop(now + 1);
   }
 
+  /**
+   * The sound of the object breaking open: a noise burst for the crack, over a
+   * falling tone for the mass behind it.
+   */
+  fracture(): void {
+    if (!this.enabled || !this.context || !this.master) return;
+    const context = this.context;
+    const now = context.currentTime;
+
+    const length = Math.floor(context.sampleRate * 0.45);
+    const noise = context.createBuffer(1, length, context.sampleRate);
+    const channel = noise.getChannelData(0);
+    for (let index = 0; index < length; index += 1) {
+      // Decaying noise, sharpest at the moment of the break.
+      channel[index] = (Math.random() * 2 - 1) * (1 - index / length) ** 3;
+    }
+
+    const source = context.createBufferSource();
+    const crackFilter = context.createBiquadFilter();
+    const crackGain = context.createGain();
+    source.buffer = noise;
+    crackFilter.type = 'bandpass';
+    crackFilter.frequency.setValueAtTime(2_100, now);
+    crackFilter.frequency.exponentialRampToValueAtTime(620, now + 0.4);
+    crackFilter.Q.value = 0.9;
+    crackGain.gain.setValueAtTime(0.22, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    source.connect(crackFilter).connect(crackGain).connect(this.master);
+    source.start(now);
+
+    const body = context.createOscillator();
+    const bodyGain = context.createGain();
+    body.type = 'sawtooth';
+    body.frequency.setValueAtTime(180, now);
+    body.frequency.exponentialRampToValueAtTime(42, now + 0.5);
+    bodyGain.gain.setValueAtTime(0.0001, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.14, now + 0.012);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    body.connect(bodyGain).connect(this.master);
+    body.start(now);
+    body.stop(now + 0.65);
+  }
+
   async suspend(): Promise<void> {
     if (this.context?.state === 'running') await this.context.suspend();
   }

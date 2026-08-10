@@ -59,6 +59,7 @@ interface ExperienceProps {
   readonly onChargeStart: () => void;
   readonly onChargeChange: (amount: number) => void;
   readonly onChargeRelease: (amount: number) => void;
+  readonly onFracture: () => void;
   readonly onVisibilityChange: (visible: boolean) => void;
   readonly onCinematicChange: (running: boolean) => void;
   readonly onOpenAbout: () => void;
@@ -95,6 +96,7 @@ export const Experience = ({
   onChargeStart,
   onChargeChange,
   onChargeRelease,
+  onFracture,
   onVisibilityChange,
   onCinematicChange,
   onOpenAbout,
@@ -117,6 +119,7 @@ export const Experience = ({
   const failureHoldUntilRef = useRef(0);
   const failureSeenRef = useRef(false);
   const interactionTimerRef = useRef<number | null>(null);
+  const fractureTimerRef = useRef<number | null>(null);
   // Read inside the animation loop so a late-arriving second video cannot force
   // the loop to be torn down and restarted mid-scroll.
   const video2ReadyRef = useRef(false);
@@ -144,6 +147,7 @@ export const Experience = ({
   const [artifactResponding, setArtifactResponding] = useState(false);
   const [charging, setCharging] = useState(false);
   const [carrying, setCarrying] = useState(false);
+  const [fractured, setFractured] = useState(false);
   const [resonant, setResonant] = useState(false);
   const sources = useMemo(selectVideoSources, []);
 
@@ -182,6 +186,7 @@ export const Experience = ({
 
   useEffect(() => () => {
     if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
+    if (fractureTimerRef.current !== null) window.clearTimeout(fractureTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -517,6 +522,14 @@ export const Experience = ({
     rendererRef.current?.addSpin((delta / window.innerWidth) * 9);
   };
 
+  const noteFracture = (): void => {
+    contactsRef.current += 1;
+    onFracture();
+    setFractured(true);
+    if (fractureTimerRef.current !== null) window.clearTimeout(fractureTimerRef.current);
+    fractureTimerRef.current = window.setTimeout(() => setFractured(false), 2_200);
+  };
+
   const endHold = (): void => {
     const hold = holdRef.current;
     if (!hold.active) return;
@@ -526,7 +539,8 @@ export const Experience = ({
     setCharging(false);
     setCarrying(false);
     chargeRef.current = 0;
-    rendererRef.current?.setGrab(false);
+    // Letting go hard enough breaks it open rather than simply setting it down.
+    if (rendererRef.current?.releaseGrab()) noteFracture();
     onChargeRelease(wasDragging ? 0 : charge);
     if (wasDragging || !rendererRef.current?.release(charge)) return;
 
@@ -556,6 +570,7 @@ export const Experience = ({
     setArtifactResponding(false);
     setCarrying(false);
     setCharging(false);
+    setFractured(false);
     setResonant(false);
     setHasScrolled(false);
     onReplay();
@@ -669,15 +684,17 @@ export const Experience = ({
                 }}
               />
               <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
-                {carrying
-                  ? 'THE OBJECT FOLLOWS YOU'
-                  : resonant
-                    ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
-                    : charging
-                      ? 'CHARGING — RELEASE TO DISCHARGE'
-                      : artifactResponding
-                        ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
-                        : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
+                {fractured
+                  ? 'STRUCTURE BREACHED · IT IS CLOSING ITSELF'
+                  : carrying
+                    ? 'THE OBJECT FOLLOWS YOU · THROW IT'
+                    : resonant
+                      ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
+                      : charging
+                        ? 'CHARGING — RELEASE TO DISCHARGE'
+                        : artifactResponding
+                          ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
+                          : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
               </p>
             </>
           )}

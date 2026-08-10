@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const HOLD_DURATION_MS = 900;
+const TICKS = Array.from({ length: 48 }, (_, index) => index * 7.5);
 
 interface EntryGateProps {
   readonly ready: boolean;
@@ -91,6 +92,21 @@ export const EntryGate = ({
           >
             <svg viewBox="0 0 120 120" aria-hidden="true">
               <circle className="hold-control__track" cx="60" cy="60" r="54" />
+              {/* A graduated collar, as on the dial it sits over. */}
+              <g className="hold-control__ticks">
+                {TICKS.map((angle) => (
+                  <line
+                    key={angle}
+                    x1="60"
+                    y1="4"
+                    x2="60"
+                    y2={angle % 45 === 0 ? 11 : 7.5}
+                    transform={`rotate(${angle} 60 60)`}
+                    strokeWidth={angle % 45 === 0 ? 1.1 : 0.6}
+                  />
+                ))}
+              </g>
+              <circle className="hold-control__collar" cx="60" cy="60" r="47" />
               <circle className="hold-control__progress" cx="60" cy="60" r="54" />
             </svg>
             <span className="hold-control__core" />

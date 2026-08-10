@@ -46,14 +46,21 @@ npm run preview
 
 ## Media pipeline
 
-The two supplied 1280×720, 24 FPS source renders are pre-rendered footage. They are converted locally to silent GOP1 H.264 derivatives for precise forward and reverse seeking:
+The two supplied 1280×720, 24 FPS source renders are pre-rendered footage. They are converted locally to silent all-intra H.264 derivatives — every frame a keyframe — for precise forward and reverse seeking:
+
+```bash
+ffmpeg -i source.mp4 -c:v libx264 -preset veryslow -crf 22 -x264-params "keyint=1:min-keyint=1:scenecut=0:bframes=0:ref=1" -pix_fmt yuv420p -an -movflags +faststart out-720-gop1.mp4
+```
+
+The 540p variants use the same parameters with `-vf scale=960:540:flags=lanczos` and CRF 24. The sources are themselves lossy at roughly 1.9 Mb/s, so encoding the derivatives far above that only preserves compression artefacts; CRF 22 holds SSIM 0.983 against the source while costing a third less than a higher-bitrate encode.
+
 
 - `public/media/vault-unlock-720-gop1.mp4`
 - `public/media/vault-unlock-540-gop1.mp4`
 - `public/media/vault-opening-720-gop1.mp4`
 - `public/media/vault-opening-540-gop1.mp4`
 
-The reveal after frame 239 of the opening film is rendered live in WebGL. The supplied soundtrack is delivered as a 96 kb/s AAC-LC file (`public/media/vault-of-iron-sleep.m4a`), filtered against the sequence intensity, analysed for the reactive geometry, and mixed with synthesised charge and impact tones. Original root-level MP4 source renders are intentionally ignored by Git; only optimized delivery files are published.
+The reveal after frame 239 of the opening film is rendered live in WebGL. The supplied soundtrack is delivered as a 96 kb/s AAC-LC file (`public/media/vault-corroded-silence.m4a`), filtered against the sequence intensity, analysed for the reactive geometry, and mixed with synthesised charge and impact tones. Original root-level MP4 source renders are intentionally ignored by Git; only optimized delivery files are published.
 
 ## Degradation
 

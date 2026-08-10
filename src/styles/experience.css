@@ -317,20 +317,68 @@
 }
 
 .hold-control__track {
-  stroke: rgba(232, 228, 219, 0.22);
+  stroke: rgba(232, 228, 219, 0.28);
+}
+
+/*
+ * These rotate about the dial's centre in the SVG's own coordinate system.
+ * `transform-box: view-box` is required: without it a percentage or length
+ * origin resolves against the element's bounding box, which throws the tick
+ * ring off onto its own centre well away from everything else.
+ */
+.hold-control__collar,
+.hold-control__ticks {
+  transform-box: view-box;
+  transform-origin: 60px 60px;
+}
+
+/* A slack inner collar that tightens onto the dial as authorization completes. */
+.hold-control__collar {
+  stroke: rgba(215, 183, 122, 0.32);
+  stroke-dasharray: 8 14;
+  animation: collar-drift 34s linear infinite;
+  transition: stroke 400ms ease, opacity 400ms ease;
+}
+
+.hold-control__ticks line {
+  stroke: rgba(232, 228, 219, 0.45);
+  transition: stroke 400ms ease;
+}
+
+.hold-control__ticks {
+  animation: ticks-drift 90s linear infinite;
+}
+
+.hold-control.is-holding .hold-control__ticks line {
+  stroke: rgba(215, 183, 122, 0.62);
+}
+
+.hold-control.is-holding .hold-control__collar {
+  stroke: rgba(215, 183, 122, 0.5);
+  animation-duration: 5s;
 }
 
 .hold-control__progress {
   stroke: var(--accent);
   stroke-dasharray: 339.3;
   stroke-dashoffset: 339.3;
-  transition: stroke-dashoffset 180ms ease-out;
+  filter: drop-shadow(0 0 0.4rem rgba(215, 183, 122, 0));
+  transition: stroke-dashoffset 180ms ease-out, filter 400ms ease;
 }
 
 .hold-control.is-holding .hold-control__progress {
   stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 0.7rem rgba(215, 183, 122, 0.75));
   transition-duration: 900ms;
   transition-timing-function: cubic-bezier(0.3, 0.05, 0.2, 1);
+}
+
+@keyframes collar-drift {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes ticks-drift {
+  to { transform: rotate(360deg); }
 }
 
 .hold-control__core {
@@ -340,12 +388,21 @@
   border-radius: 50%;
   background: radial-gradient(circle, rgba(215, 183, 122, 0.14), transparent 65%);
   box-shadow: 0 0 0 0 rgba(215, 183, 122, 0.08);
-  transition: transform 220ms ease, box-shadow 300ms ease;
+  transition: transform 220ms ease, box-shadow 300ms ease, border-color 300ms ease;
+  animation: dial-breathe 4.5s ease-in-out infinite;
 }
 
 .hold-control.is-holding .hold-control__core {
-  transform: scale(0.88);
-  box-shadow: 0 0 2.2rem 0.8rem rgba(215, 183, 122, 0.08);
+  transform: scale(0.86);
+  border-color: rgba(215, 183, 122, 0.9);
+  box-shadow: 0 0 2.6rem 0.9rem rgba(215, 183, 122, 0.12);
+  animation: none;
+}
+
+/* Idles with a slow heartbeat so the dial reads as live before it is touched. */
+@keyframes dial-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(215, 183, 122, 0.1); }
+  50% { box-shadow: 0 0 1.6rem 0.15rem rgba(215, 183, 122, 0.12); }
 }
 
 /* Hung below the dial so their height can never shift the dial off centre. */

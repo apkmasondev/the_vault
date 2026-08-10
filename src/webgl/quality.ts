@@ -10,6 +10,8 @@ export interface QualityProfile {
   readonly dpr: number;
   readonly particles: number;
   readonly stars: number;
+  /** Large, soft, defocused motes drifting in the opened chamber. */
+  readonly motes: number;
   readonly geometryDetail: number;
   /** The bloom chain is the first thing dropped on a struggling device. */
   readonly postProcessing: boolean;
@@ -25,6 +27,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       dpr: Math.min(deviceDpr, coarse ? 1.25 : 1.5),
       particles: 1050,
       stars: 440,
+      motes: 68,
       geometryDetail: 4,
       postProcessing: true,
     };
@@ -36,6 +39,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       dpr: Math.min(deviceDpr, 1.25),
       particles: 620,
       stars: 270,
+      motes: 44,
       geometryDetail: 3,
       postProcessing: true,
     };
@@ -46,6 +50,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
     dpr: 1,
     particles: 300,
     stars: 140,
+    motes: 22,
     geometryDetail: 2,
     postProcessing: false,
   };

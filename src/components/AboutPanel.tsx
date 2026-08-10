@@ -143,6 +143,7 @@ export const AboutPanel = ({
               <li><span>Scroll</span>Everything is tied to how far down the page you are. Scroll back and the door closes again.</li>
               <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
               <li><span>Drag</span>Pull it and it comes with you, with weight behind it, then swings back through the middle.</li>
+            <li><span>Throw</span>Let go while it is still moving fast and it comes apart, and you get a moment of what is inside before it closes itself.</li>
               <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
               <li><span>Play it for me</span>Hands off, if you would rather just watch. Any scroll takes control back.</li>
             </ul>
@@ -203,6 +204,8 @@ export const AboutPanel = ({
             while you hold it so it tracks your hand, slack and underdamped when you let go so it
             swings back through the middle and settles. The faster you haul it, the more it draws
             out along the direction of travel and pinches across it, the way a heavy drop behaves.
+            Let go above a threshold speed and the shell parts along the throw, light escapes the
+            seam, and a stiff spring pulls the break shut again in about a third of a second.
           </p>
           <p>
             While the soundtrack plays it is analysed live, and its low band displaces the surface —
