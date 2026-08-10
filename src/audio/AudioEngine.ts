@@ -3,13 +3,18 @@ export class AudioEngine {
   private master: GainNode | null = null;
   private atmosphere: GainNode | null = null;
   private filter: BiquadFilterNode | null = null;
-  private sources: AudioScheduledSourceNode[] = [];
+  private soundtrack: HTMLAudioElement | null = null;
+  private soundtrackSource: MediaElementAudioSourceNode | null = null;
   private enabled = false;
+
+  constructor(private readonly soundtrackUrl: string) {}
 
   async start(enabled: boolean): Promise<void> {
     if (!this.context) this.createGraph();
     if (!this.context) return;
+    const playback = this.soundtrack?.play();
     if (this.context.state === 'suspended') await this.context.resume();
+    if (playback) await playback.catch(() => undefined);
     this.setEnabled(enabled);
   }
 
@@ -19,15 +24,15 @@ export class AudioEngine {
     const now = this.context.currentTime;
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
-    this.master.gain.linearRampToValueAtTime(enabled ? 0.16 : 0, now + (enabled ? 0.55 : 0.32));
+    this.master.gain.linearRampToValueAtTime(enabled ? 0.32 : 0, now + (enabled ? 0.65 : 0.32));
   }
 
   update(progress: number): void {
     if (!this.context || !this.atmosphere || !this.filter) return;
     const now = this.context.currentTime;
     const intensity = Math.max(0, Math.min(1, (progress - 0.35) / 0.6));
-    this.atmosphere.gain.setTargetAtTime(0.42 + intensity * 0.25, now, 0.18);
-    this.filter.frequency.setTargetAtTime(190 + intensity * 260, now, 0.22);
+    this.atmosphere.gain.setTargetAtTime(0.78 + intensity * 0.18, now, 0.18);
+    this.filter.frequency.setTargetAtTime(9_500 + intensity * 5_000, now, 0.22);
   }
 
   impact(): void {
@@ -54,21 +59,28 @@ export class AudioEngine {
     if (this.enabled && this.context?.state === 'suspended') await this.context.resume();
   }
 
+  reset(): void {
+    this.setEnabled(false);
+    if (this.soundtrack) {
+      this.soundtrack.pause();
+      this.soundtrack.currentTime = 0;
+    }
+  }
+
   dispose(): void {
-    this.sources.forEach((source) => {
-      try {
-        source.stop();
-      } catch {
-        // A source may already have stopped naturally.
-      }
-      source.disconnect();
-    });
-    this.sources = [];
+    this.soundtrack?.pause();
+    this.soundtrackSource?.disconnect();
     this.master?.disconnect();
     this.atmosphere?.disconnect();
     this.filter?.disconnect();
+    if (this.soundtrack) {
+      this.soundtrack.removeAttribute('src');
+      this.soundtrack.load();
+    }
     if (this.context) void this.context.close();
     this.context = null;
+    this.soundtrack = null;
+    this.soundtrackSource = null;
   }
 
   private createGraph(): void {
@@ -80,46 +92,23 @@ export class AudioEngine {
     const atmosphere = context.createGain();
     const filter = context.createBiquadFilter();
     master.gain.value = 0;
-    atmosphere.gain.value = 0.42;
+    atmosphere.gain.value = 0.78;
     filter.type = 'lowpass';
-    filter.frequency.value = 190;
-    filter.Q.value = 0.55;
+    filter.frequency.value = 9_500;
+    filter.Q.value = 0.4;
     atmosphere.connect(filter).connect(master).connect(context.destination);
 
-    const first = context.createOscillator();
-    const second = context.createOscillator();
-    first.type = 'sine';
-    second.type = 'triangle';
-    first.frequency.value = 36.7;
-    second.frequency.value = 55.1;
-    const firstGain = context.createGain();
-    const secondGain = context.createGain();
-    firstGain.gain.value = 0.32;
-    secondGain.gain.value = 0.055;
-    first.connect(firstGain).connect(atmosphere);
-    second.connect(secondGain).connect(atmosphere);
+    const soundtrack = new Audio(this.soundtrackUrl);
+    soundtrack.loop = true;
+    soundtrack.preload = 'auto';
+    const soundtrackSource = context.createMediaElementSource(soundtrack);
+    soundtrackSource.connect(atmosphere);
 
-    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-    const data = buffer.getChannelData(0);
-    let seed = 0x71e4ab3;
-    for (let index = 0; index < data.length; index += 1) {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      data[index] = (seed / 0xffffffff) * 2 - 1;
-    }
-    const noise = context.createBufferSource();
-    const noiseGain = context.createGain();
-    noise.buffer = buffer;
-    noise.loop = true;
-    noiseGain.gain.value = 0.018;
-    noise.connect(noiseGain).connect(atmosphere);
-
-    first.start();
-    second.start();
-    noise.start();
     this.context = context;
     this.master = master;
     this.atmosphere = atmosphere;
     this.filter = filter;
-    this.sources = [first, second, noise];
+    this.soundtrack = soundtrack;
+    this.soundtrackSource = soundtrackSource;
   }
 }

@@ -17,6 +17,8 @@
   overflow: clip;
   isolation: isolate;
   background: var(--bg);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .media-stack {
@@ -36,6 +38,8 @@
   height: 100%;
   object-fit: cover;
   transform: translate(-50%, -50%);
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .media-poster {
@@ -137,6 +141,29 @@
   outline-offset: 0.7rem;
 }
 
+.artifact-guidance {
+  position: absolute;
+  z-index: 12;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  left: 50%;
+  margin: 0;
+  color: rgba(232, 228, 219, 0.58);
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  transition: color 180ms ease, text-shadow 180ms ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.artifact-guidance.is-responding {
+  color: var(--accent);
+  text-shadow: 0 0 1.4rem rgba(215, 183, 122, 0.52);
+}
+
 .entry-gate {
   position: fixed;
   z-index: 50;
@@ -148,6 +175,8 @@
   padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
   background: radial-gradient(circle at 50% 50%, rgba(7, 8, 9, 0.12), rgba(7, 8, 9, 0.62) 58%, rgba(7, 8, 9, 0.88));
   transition: opacity 700ms ease, visibility 700ms;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .entry-gate.is-granted {
@@ -200,6 +229,10 @@
   align-items: center;
   justify-content: center;
   min-height: 15rem;
+}
+
+.authorization {
+  transform: translate(4.55vw, -1.4vh);
 }
 
 .hold-control {
@@ -514,6 +547,64 @@
   text-indent: 0.35em;
 }
 
+.finale__lead {
+  max-width: 35rem;
+  margin-top: 1.1rem !important;
+  color: rgba(232, 228, 219, 0.62);
+  font-size: clamp(0.72rem, 1.1vw, 0.88rem);
+  line-height: 1.7;
+  letter-spacing: 0.08em;
+}
+
+.finale__record {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(42rem, 100%);
+  margin: 2rem 0 0;
+  padding: 1.15rem 0;
+  border-top: 1px solid rgba(232, 228, 219, 0.12);
+  border-bottom: 1px solid rgba(232, 228, 219, 0.12);
+}
+
+.finale__record div {
+  padding: 0.25rem 1rem;
+}
+
+.finale__record div + div {
+  border-left: 1px solid rgba(232, 228, 219, 0.1);
+}
+
+.finale__record dt,
+.finale__record dd {
+  margin: 0;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  text-transform: uppercase;
+}
+
+.finale__record dt {
+  color: var(--text-muted);
+  font-size: 0.52rem;
+  letter-spacing: 0.18em;
+}
+
+.finale__record dd {
+  margin-top: 0.55rem;
+  color: var(--accent);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+}
+
+.finale__actions {
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+  margin-top: 2rem;
+}
+
+.finale__actions .outline-button {
+  margin-top: 0;
+}
+
 .outline-button {
   min-width: 8.5rem;
   min-height: 2.9rem;
@@ -530,11 +621,15 @@
 }
 
 .finale a {
-  margin-top: 1.8rem;
   color: var(--text-muted);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
   text-decoration: none;
+  transition: color 180ms ease;
+}
+
+.finale a:hover {
+  color: var(--text);
 }
 
 .system-message {
@@ -688,6 +783,10 @@
     object-fit: contain;
   }
 
+  .authorization {
+    transform: translate(5.6vw, -1.1vh);
+  }
+
   .stage-shade {
     background:
       linear-gradient(180deg, rgba(7, 8, 9, 0.88), transparent 24%, transparent 74%, rgba(7, 8, 9, 0.9)),
@@ -742,6 +841,36 @@
 
   .scroll-cue {
     bottom: calc(3.75rem + env(safe-area-inset-bottom));
+  }
+
+  .artifact-guidance {
+    bottom: calc(5.25rem + env(safe-area-inset-bottom));
+    max-width: calc(100% - 2rem);
+    font-size: 0.52rem;
+    line-height: 1.5;
+    white-space: normal;
+  }
+
+  .finale {
+    padding-inline: 1.35rem;
+  }
+
+  .finale h2 {
+    font-size: clamp(1.8rem, 10vw, 3rem);
+  }
+
+  .finale__record div {
+    padding-inline: 0.45rem;
+  }
+
+  .finale__record dd {
+    font-size: 0.54rem;
+  }
+
+  .finale__actions {
+    flex-direction: column;
+    gap: 1.15rem;
+    margin-top: 1.6rem;
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { asset, MEDIA, SCROLL_DAMPING_SECONDS, VIDEO_DURATION_FALLBACK } from '../app/constants';
+import { asset, MEDIA, SCROLL_DAMPING_SECONDS, TIMELINE, VIDEO_DURATION_FALLBACK } from '../app/constants';
 import { VideoScrubber } from '../media/VideoScrubber';
 import { selectVideoSources } from '../media/videoSources';
 import { clamp, damp, smoothstep } from '../utils/math';
@@ -11,6 +11,9 @@ import {
 } from '../utils/timeline';
 import type { VaultRenderer } from '../webgl/VaultRenderer';
 import { AudioToggle } from './AudioToggle';
+import { Finale } from './Finale';
+
+const MINIMUM_FAILURE_DURATION_MS = 1_800;
 
 interface ExperienceProps {
   readonly authorized: boolean;
@@ -62,6 +65,9 @@ export const Experience = ({
   const pointerRef = useRef({ targetX: 0, targetY: 0, x: 0, y: 0 });
   const rendererRef = useRef<VaultRenderer | null>(null);
   const scrubbersRef = useRef<{ first: VideoScrubber; second: VideoScrubber } | null>(null);
+  const failureHoldUntilRef = useRef(0);
+  const failureSeenRef = useRef(false);
+  const interactionTimerRef = useRef<number | null>(null);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -71,6 +77,7 @@ export const Experience = ({
   const [hasScrolled, setHasScrolled] = useState(false);
   const [cue, setCue] = useState<TimelineCue>('idle');
   const [debugVisible, setDebugVisible] = useState(false);
+  const [artifactResponding, setArtifactResponding] = useState(false);
   const sources = useMemo(selectVideoSources, []);
 
   authorizedRef.current = authorized;
@@ -94,6 +101,10 @@ export const Experience = ({
       scrubbers.second.destroy();
       if (scrubbersRef.current === scrubbers) scrubbersRef.current = null;
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -185,6 +196,18 @@ export const Experience = ({
         displayProgressRef.current = displayProgress;
         onProgress(displayProgress);
 
+        if (displayProgress < TIMELINE.failureStart - 0.004) {
+          failureSeenRef.current = false;
+          failureHoldUntilRef.current = 0;
+        } else if (displayProgress >= TIMELINE.failureStart && !failureSeenRef.current) {
+          failureSeenRef.current = true;
+          failureHoldUntilRef.current = now + MINIMUM_FAILURE_DURATION_MS;
+        }
+        const failureHoldActive = now < failureHoldUntilRef.current;
+        const visualProgress = failureHoldActive
+          ? Math.min(displayProgress, TIMELINE.finalStart - 0.001)
+          : displayProgress;
+
         const first = video1Ref.current;
         const second = video2Ref.current;
         const scrubbers = scrubbersRef.current;
@@ -214,13 +237,13 @@ export const Experience = ({
         pointer.y = damp(pointer.y, pointer.targetY, 0.12, deltaSeconds);
         stageRef.current?.style.setProperty('--media-x', `${pointer.x * 3}px`);
         stageRef.current?.style.setProperty('--media-y', `${pointer.y * 2}px`);
-        rendererRef.current?.update(displayProgress, deltaSeconds, pointer.x, pointer.y);
+        rendererRef.current?.update(visualProgress, deltaSeconds, pointer.x, pointer.y);
 
         if (progressRef.current) {
           progressRef.current.textContent = String(Math.round(displayProgress * 100)).padStart(3, '0');
         }
 
-        const nextCue = cueForProgress(displayProgress);
+        const nextCue = failureHoldActive ? 'failure' : cueForProgress(displayProgress);
         if (nextCue !== latestCue) {
           latestCue = nextCue;
           setCue(nextCue);
@@ -265,13 +288,20 @@ export const Experience = ({
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
 
   const pulseArtifact = (): void => {
-    if (rendererRef.current?.pulse()) onArtifactPulse();
+    if (!rendererRef.current?.pulse()) return;
+    onArtifactPulse();
+    setArtifactResponding(true);
+    if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
+    interactionTimerRef.current = window.setTimeout(() => setArtifactResponding(false), 1_350);
   };
 
   const replay = (): void => {
     scrubbersRef.current?.first.reset();
     scrubbersRef.current?.second.reset();
     rendererRef.current?.reset();
+    failureSeenRef.current = false;
+    failureHoldUntilRef.current = 0;
+    setArtifactResponding(false);
     onReplay();
   };
 
@@ -295,6 +325,7 @@ export const Experience = ({
               className="media-layer media-poster"
               src={asset(MEDIA.poster)}
               alt=""
+              draggable={false}
               fetchPriority="high"
               decoding="sync"
               onLoad={() => setPosterReady(true)}
@@ -308,6 +339,7 @@ export const Experience = ({
               className="media-layer transition-fallback"
               src={asset(MEDIA.transition)}
               alt=""
+              draggable={false}
             />
             <video
               ref={video1Ref}
@@ -317,6 +349,7 @@ export const Experience = ({
               playsInline
               preload="metadata"
               disablePictureInPicture
+              draggable={false}
               tabIndex={-1}
               onLoadedMetadata={(event) => {
                 event.currentTarget.pause();
@@ -336,6 +369,7 @@ export const Experience = ({
               playsInline
               preload="none"
               disablePictureInPicture
+              draggable={false}
               tabIndex={-1}
               onLoadedData={(event) => {
                 event.currentTarget.pause();
@@ -353,12 +387,19 @@ export const Experience = ({
           <div className="stage-shade" aria-hidden="true" />
           {fallbackVisible && <div className="artifact-fallback is-visible" aria-hidden="true" />}
           {artifactInteractive && !webglFailed && (
-            <button
-              className="artifact-hit-target"
-              type="button"
-              aria-label="Interact with the unknown artifact"
-              onClick={pulseArtifact}
-            />
+            <>
+              <button
+                className="artifact-hit-target"
+                type="button"
+                aria-label="Touch the artifact to amplify its resonance"
+                onClick={pulseArtifact}
+              />
+              <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}`}>
+                {artifactResponding
+                  ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
+                  : 'TOUCH / CLICK THE OBJECT'}
+              </p>
+            </>
           )}
 
           {authorized && !finaleVisible && (
@@ -374,19 +415,12 @@ export const Experience = ({
             <div className="scroll-cue"><span>SCROLL TO RELEASE</span><span className="scroll-cue__line" aria-hidden="true" /></div>
           )}
 
-          <div className="narrative" aria-live="polite" aria-atomic="true">
+          <div className="narrative" aria-live="polite" aria-atomic="true" aria-hidden={finaleVisible}>
             <p className="narrative__primary">{primary}</p>
             {secondary && <p className="narrative__secondary">{secondary}</p>}
           </div>
 
-          {finaleVisible && (
-            <div className="finale">
-              <p className="eyebrow">AN INTERACTIVE WEBGL EXPERIMENT</p>
-              <h2>THE VAULT</h2>
-              <button type="button" className="outline-button" onClick={replay}>REPLAY</button>
-              <a href="https://apkmason.dev" target="_blank" rel="noreferrer">ApkMason.dev</a>
-            </div>
-          )}
+          {finaleVisible && <Finale onReplay={replay} />}
 
           {import.meta.env.DEV && <pre className={`debug-panel${debugVisible ? ' is-visible' : ''}`} ref={debugRef} />}
         </div>

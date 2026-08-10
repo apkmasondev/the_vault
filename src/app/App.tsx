@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/AudioEngine';
+import { asset, MEDIA } from './constants';
 import { EntryGate } from '../components/EntryGate';
 import { Experience } from '../components/Experience';
 import { ReducedMotionExperience } from '../components/ReducedMotionExperience';
@@ -23,6 +24,12 @@ export const App = () => {
   const audioRef = useRef<AudioEngine | null>(null);
   const reducedMotion = useReducedMotion();
 
+  const getAudio = useCallback((): AudioEngine => {
+    const audio = audioRef.current ?? new AudioEngine(asset(MEDIA.soundtrack));
+    audioRef.current = audio;
+    return audio;
+  }, []);
+
   useEffect(() => {
     document.body.classList.toggle('is-entry-locked', !authorized);
     return () => document.body.classList.remove('is-entry-locked');
@@ -39,32 +46,31 @@ export const App = () => {
   }, []);
 
   const authorize = useCallback((withSound: boolean): void => {
-    const audio = audioRef.current ?? new AudioEngine();
-    audioRef.current = audio;
+    const audio = getAudio();
     void audio.start(withSound);
     setSoundEnabled(withSound);
     rememberSound(withSound);
     window.setTimeout(() => setAuthorized(true), 720);
-  }, [rememberSound]);
+  }, [getAudio, rememberSound]);
 
   const prepareAudio = useCallback((): void => {
-    const audio = audioRef.current ?? new AudioEngine();
-    audioRef.current = audio;
+    const audio = getAudio();
     void audio.start(false);
-  }, []);
+  }, [getAudio]);
 
   const toggleSound = useCallback((): void => {
     const enabled = !soundEnabled;
-    const audio = audioRef.current ?? new AudioEngine();
-    audioRef.current = audio;
+    const audio = getAudio();
     void audio.start(enabled);
     setSoundEnabled(enabled);
     rememberSound(enabled);
-  }, [rememberSound, soundEnabled]);
+  }, [getAudio, rememberSound, soundEnabled]);
 
   const replay = useCallback((): void => {
-    window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
-  }, [reducedMotion]);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    audioRef.current?.reset();
+    setAuthorized(false);
+  }, []);
 
   const updateAudio = useCallback((progress: number): void => {
     audioRef.current?.update(progress);

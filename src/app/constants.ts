@@ -1,5 +1,5 @@
 export const VIDEO_FPS = 24;
-export const VIDEO_2_REVEAL_CUTOFF = 206 / VIDEO_FPS;
+export const VIDEO_2_REVEAL_CUTOFF = 239 / VIDEO_FPS;
 export const VIDEO_DURATION_FALLBACK = 10;
 export const SCROLL_DAMPING_SECONDS = 0.105;
 
@@ -13,8 +13,8 @@ export const TIMELINE = {
   video2End: 0.84,
   revealStart: 0.84,
   revealEnd: 0.94,
-  unstableEnd: 0.985,
-  failureStart: 0.985,
+  unstableEnd: 0.965,
+  failureStart: 0.965,
   finalStart: 0.997,
 } as const;
 
@@ -25,6 +25,7 @@ export const MEDIA = {
   opening540: 'media/vault-opening-540-gop1.mp4',
   poster: 'media/vault-poster.webp',
   transition: 'media/vault-opening-transition.webp',
+  soundtrack: 'media/vault-of-iron-sleep.m4a',
 } as const;
 
 export const asset = (path: string): string =>
