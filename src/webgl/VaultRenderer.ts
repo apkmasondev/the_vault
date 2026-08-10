@@ -608,7 +608,7 @@ export class VaultRenderer {
         time: this.elapsed,
         shock: this.shock,
         bloom: 0.55 + charge * 0.3 + failure * 0.18,
-        aberration: 0.4 + charge * 0.55 + failure * 1.4,
+        aberration: 0.4 + charge * 0.55 + failure * 0.85,
         grain: 0.035 + failure * 0.05,
       });
     } else {

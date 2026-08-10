@@ -25,7 +25,7 @@ import { AudioToggle } from './AudioToggle';
 import { ChapterRail } from './ChapterRail';
 import { Finale } from './Finale';
 
-const MINIMUM_FAILURE_DURATION_MS = 1_800;
+const MINIMUM_FAILURE_DURATION_MS = 2_400;
 /** How long a hands-off run of the entire timeline takes. */
 const CINEMATIC_DURATION_MS = 62_000;
 /** Seconds of continuous contact needed to bring the core to full charge. */
@@ -79,6 +79,7 @@ const cueCopy: Record<TimelineCue, readonly [string, string?]> = {
   origin: ['ORIGIN: UNKNOWN', 'IT RESPONDS TO CONTACT'],
   stability: ['IT IS AWAKE', 'STABILITY FALLING'],
   failure: ['CONTAINMENT FAILURE', undefined],
+  collapse: ['V-07 IS GONE', 'NOTHING HELD IT BUT THE DOOR'],
   final: ['THE VAULT', 'AN INTERACTIVE WEBGL EXPERIMENT'],
 };
 
@@ -702,7 +703,10 @@ export const Experience = ({
           {authorized && !finaleVisible && (
             <div className="hud">
               <div className="hud__identity"><span>V-07</span><span>CONTAINMENT</span></div>
-              <div className="hud__status"><span>SYSTEM</span><span>{cue === 'failure' ? 'CRITICAL' : 'MONITORING'}</span></div>
+              <div className="hud__status">
+            <span>SYSTEM</span>
+            <span>{cue === 'failure' ? 'CRITICAL' : cue === 'collapse' ? 'NO SIGNAL' : 'MONITORING'}</span>
+          </div>
               <div className="hud__progress"><span ref={progressRef}>000</span><span>/ 100</span></div>
               <div className="hud__controls">
                 <button

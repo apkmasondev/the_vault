@@ -1,5 +1,5 @@
 .experience {
-  --timeline-height: 920vh;
+  --timeline-height: 1060vh;
   position: relative;
   min-height: var(--timeline-height);
   background: var(--bg);
@@ -120,7 +120,8 @@
   background-color: rgba(3, 3, 3, 0.16);
 }
 
-.cue-failure .stage-shade {
+.cue-failure .stage-shade,
+.cue-collapse .stage-shade {
   background-color: rgba(20, 4, 2, 0.18);
 }
 
@@ -584,7 +585,8 @@
   color: var(--accent);
 }
 
-.cue-failure .hud__status span:last-child {
+.cue-failure .hud__status span:last-child,
+.cue-collapse .hud__status span:last-child {
   color: var(--danger);
 }
 
@@ -642,7 +644,8 @@
 .cue-object .narrative,
 .cue-origin .narrative,
 .cue-stability .narrative,
-.cue-failure .narrative {
+.cue-failure .narrative,
+.cue-collapse .narrative {
   top: 72%;
   left: 50%;
   text-align: center;
@@ -654,13 +657,24 @@
   letter-spacing: 0.42em;
 }
 
-.cue-failure .narrative {
+.cue-failure .narrative,
+.cue-collapse .narrative {
   top: 50%;
   color: #e0a296;
 }
 
 .cue-failure .narrative__primary {
   font-size: clamp(1rem, 3vw, 2.3rem);
+}
+
+/* The aftermath speaks more quietly than the alarm that preceded it. */
+.cue-collapse .narrative__primary {
+  font-size: clamp(0.9rem, 2.3vw, 1.7rem);
+  letter-spacing: 0.34em;
+}
+
+.cue-collapse .narrative__secondary {
+  color: rgba(224, 162, 150, 0.72);
 }
 
 .scroll-cue {
@@ -1297,7 +1311,7 @@
 
 @media (max-width: 767px), (orientation: portrait) and (max-width: 1024px) {
   .experience {
-    --timeline-height: 920svh;
+    --timeline-height: 1060svh;
   }
 
   .media-stack {
@@ -1326,6 +1340,7 @@
   }
 
   .cue-warning .narrative,
+  .cue-collapse .narrative,
   .cue-object .narrative,
   .cue-origin .narrative,
   .cue-stability .narrative,

@@ -8,37 +8,49 @@ export const SCROLL_DAMPING_SECONDS = 0.105;
  * cue selection, video seeking, shader ramps, audio — is allowed to invent its
  * own number, so the sequence can be retimed from a single place.
  */
+/**
+ * Derived from a fixed budget of scroll, in viewport heights, so the two films
+ * keep the scrubbing feel they were tuned with while the beats around them can
+ * be given more or less room. The section is `--timeline-height` tall; changing
+ * a figure here means changing that to match the new total.
+ *
+ *   sealed 55 · unlock film 386 · warning 74 · opening film 258
+ *   · the object 145 · containment failure 135 · archive 7   = 1060
+ */
 export const TIMELINE = {
-  introEnd: 0.06,
-  video1Start: 0.06,
-  disengagedStart: 0.38,
-  video1End: 0.48,
-  warningStart: 0.48,
-  doNotOpenStart: 0.535,
-  video2Start: 0.56,
-  video2End: 0.84,
-  revealStart: 0.84,
-  originStart: 0.89,
-  stabilityStart: 0.93,
-  revealEnd: 0.94,
-  unstableEnd: 0.965,
-  failureStart: 0.965,
-  finalStart: 0.997,
+  introEnd: 0.052,
+  video1Start: 0.052,
+  disengagedStart: 0.329,
+  video1End: 0.416,
+  warningStart: 0.416,
+  doNotOpenStart: 0.464,
+  video2Start: 0.486,
+  video2End: 0.729,
+  revealStart: 0.729,
+  originStart: 0.784,
+  stabilityStart: 0.828,
+  revealEnd: 0.839,
+  unstableEnd: 0.866,
+  failureStart: 0.866,
+  collapseStart: 0.93,
+  finalStart: 0.993,
 } as const;
 
 /** Continuous ramps consumed by the crossfade, the renderer and the audio graph. */
 export const RAMPS = {
-  crossfadeStart: 0.552,
-  crossfadeEnd: 0.572,
-  openFadeStart: 0.58,
-  openFadeEnd: 0.86,
-  revealFadeStart: 0.835,
-  revealFadeEnd: 0.925,
-  failureFadeStart: 0.975,
-  failureFadeEnd: 0.995,
+  crossfadeStart: 0.478,
+  crossfadeEnd: 0.498,
+  openFadeStart: 0.506,
+  openFadeEnd: 0.749,
+  revealFadeStart: 0.724,
+  revealFadeEnd: 0.822,
+  // Stretched across the widened failure beat so the collapse builds instead of
+  // arriving all at once.
+  failureFadeStart: 0.888,
+  failureFadeEnd: 0.985,
   artifactHiddenAfter: 0.999,
-  audioIntensityStart: 0.35,
-  audioIntensitySpan: 0.6,
+  audioIntensityStart: 0.3,
+  audioIntensitySpan: 0.52,
 } as const;
 
 export interface Chapter {
@@ -50,11 +62,12 @@ export interface Chapter {
 /** Named beats used by the chapter rail and by the About panel diagram. */
 export const CHAPTERS: readonly Chapter[] = [
   { id: 'seal', label: 'SEALED', progress: 0 },
-  { id: 'lock', label: 'LOCK SEQUENCE', progress: 0.2 },
+  { id: 'lock', label: 'LOCK SEQUENCE', progress: 0.18 },
   { id: 'release', label: 'RELEASED', progress: TIMELINE.warningStart + 0.01 },
-  { id: 'aperture', label: 'APERTURE', progress: TIMELINE.video2Start + 0.06 },
+  { id: 'aperture', label: 'APERTURE', progress: TIMELINE.video2Start + 0.05 },
   { id: 'object', label: 'THE OBJECT', progress: TIMELINE.revealStart + 0.02 },
   { id: 'breach', label: 'BREACH', progress: TIMELINE.failureStart + 0.005 },
+  { id: 'collapse', label: 'COLLAPSE', progress: TIMELINE.collapseStart + 0.005 },
 ] as const;
 
 export const MEDIA = {

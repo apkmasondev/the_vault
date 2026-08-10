@@ -28,11 +28,13 @@ export type TimelineCue =
   | 'origin'
   | 'stability'
   | 'failure'
+  | 'collapse'
   | 'final';
 
 /** Highest threshold first; the first entry the progress reaches wins. */
 const CUE_THRESHOLDS: readonly (readonly [number, TimelineCue])[] = [
   [TIMELINE.finalStart, 'final'],
+  [TIMELINE.collapseStart, 'collapse'],
   [TIMELINE.failureStart, 'failure'],
   [TIMELINE.stabilityStart, 'stability'],
   [TIMELINE.originStart, 'origin'],

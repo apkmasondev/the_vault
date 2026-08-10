@@ -39,6 +39,37 @@ describe('timeline video mapping', () => {
   });
 });
 
+describe('timeline budget', () => {
+  it('keeps the phase boundaries in ascending order', () => {
+    const ordered = [
+      TIMELINE.introEnd,
+      TIMELINE.disengagedStart,
+      TIMELINE.video1End,
+      TIMELINE.doNotOpenStart,
+      TIMELINE.video2Start,
+      TIMELINE.video2End,
+      TIMELINE.originStart,
+      TIMELINE.stabilityStart,
+      TIMELINE.revealEnd,
+      TIMELINE.failureStart,
+      TIMELINE.collapseStart,
+      TIMELINE.finalStart,
+    ];
+    for (let index = 1; index < ordered.length; index += 1) {
+      expect(ordered[index]!).toBeGreaterThan(ordered[index - 1]!);
+    }
+    expect(TIMELINE.finalStart).toBeLessThan(1);
+  });
+
+  it('gives the containment failure room to play out', () => {
+    // It is the climax; it was once a tenth the length of the unlock film.
+    const failure = TIMELINE.finalStart - TIMELINE.failureStart;
+    const object = TIMELINE.failureStart - TIMELINE.revealStart;
+    expect(failure).toBeGreaterThan(0.1);
+    expect(failure).toBeGreaterThan(object * 0.75);
+  });
+});
+
 describe('chapter navigation', () => {
   it('keeps chapters ordered and inside the timeline', () => {
     let previous = -1;
