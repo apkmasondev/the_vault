@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.analysis/
+*.local
+*.tsbuildinfo
+
+# Original local source renders. Optimized derivatives live in public/media.
+/*.mp4
