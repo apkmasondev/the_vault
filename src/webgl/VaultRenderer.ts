@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RAMPS } from '../app/constants';
 import { smoothstep } from '../utils/math';
 import { degradeQuality, selectInitialQuality, type QualityProfile, type QualityTier } from './quality';
 
@@ -311,9 +312,9 @@ export class VaultRenderer {
 
     this.elapsed += deltaSeconds;
     this.pulseAmount = Math.max(0, this.pulseAmount - deltaSeconds * 0.72);
-    const reveal = smoothstep(0.835, 0.925, progress);
-    const failure = smoothstep(0.975, 0.995, progress);
-    this.artifact.visible = reveal > 0.002 && progress < 0.999;
+    const reveal = smoothstep(RAMPS.revealFadeStart, RAMPS.revealFadeEnd, progress);
+    const failure = smoothstep(RAMPS.failureFadeStart, RAMPS.failureFadeEnd, progress);
+    this.artifact.visible = reveal > 0.002 && progress < RAMPS.artifactHiddenAfter;
 
     this.coreMaterial.uniforms.uTime!.value = this.elapsed;
     this.coreMaterial.uniforms.uReveal!.value = reveal;

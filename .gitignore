@@ -6,3 +6,9 @@ dist/
 
 # Original local source renders. Optimized derivatives live in public/media.
 /*.mp4
+
+# Working document, not part of the delivered project.
+THE_VAULT_PLAN.md
+
+# Local editor/agent scratch configuration.
+.claude/

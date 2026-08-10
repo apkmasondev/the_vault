@@ -59,7 +59,9 @@ export const EntryGate = ({
       <div className="entry-gate__frame" aria-hidden="true" />
       <div className="entry-gate__heading">
         <p className="eyebrow">Containment system V-07</p>
-        <h1>THE VAULT</h1>
+        {/* Presentational wordmark; the document heading lives in App so it
+            survives the gate unmounting on entry. */}
+        <p className="entry-gate__wordmark">THE VAULT</p>
       </div>
 
       {!ready ? (

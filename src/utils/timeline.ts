@@ -30,16 +30,23 @@ export type TimelineCue =
   | 'failure'
   | 'final';
 
+/** Highest threshold first; the first entry the progress reaches wins. */
+const CUE_THRESHOLDS: readonly (readonly [number, TimelineCue])[] = [
+  [TIMELINE.finalStart, 'final'],
+  [TIMELINE.failureStart, 'failure'],
+  [TIMELINE.stabilityStart, 'stability'],
+  [TIMELINE.originStart, 'origin'],
+  [TIMELINE.revealStart, 'object'],
+  [TIMELINE.video2Start, 'opening'],
+  [TIMELINE.doNotOpenStart, 'warning'],
+  [TIMELINE.warningStart, 'released'],
+  [TIMELINE.disengagedStart, 'disengaged'],
+  [TIMELINE.video1Start, 'sequence'],
+];
+
 export const cueForProgress = (progress: number): TimelineCue => {
-  if (progress >= TIMELINE.finalStart) return 'final';
-  if (progress >= TIMELINE.failureStart) return 'failure';
-  if (progress >= 0.93) return 'stability';
-  if (progress >= 0.89) return 'origin';
-  if (progress >= TIMELINE.revealStart) return 'object';
-  if (progress >= TIMELINE.video2Start) return 'opening';
-  if (progress >= 0.535) return 'warning';
-  if (progress >= TIMELINE.warningStart) return 'released';
-  if (progress >= 0.38) return 'disengaged';
-  if (progress >= TIMELINE.video1Start) return 'sequence';
+  for (const [threshold, cue] of CUE_THRESHOLDS) {
+    if (progress >= threshold) return cue;
+  }
   return 'idle';
 };

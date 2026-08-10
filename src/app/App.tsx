@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/AudioEngine';
-import { asset, MEDIA } from './constants';
+import { asset, LOAD_WATCHDOG_MS, MEDIA } from './constants';
 import { EntryGate } from '../components/EntryGate';
 import { Experience } from '../components/Experience';
 import { ReducedMotionExperience } from '../components/ReducedMotionExperience';
@@ -19,9 +19,11 @@ const storedAudioPreference = (): boolean => {
 export const App = () => {
   const [authorized, setAuthorized] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(storedAudioPreference);
   const [mediaError, setMediaError] = useState(false);
   const audioRef = useRef<AudioEngine | null>(null);
+  const authorizeTimerRef = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
 
   const getAudio = useCallback((): AudioEngine => {
@@ -37,6 +39,18 @@ export const App = () => {
 
   useEffect(() => () => audioRef.current?.dispose(), []);
 
+  // A stalled asset — or a cached image whose load event fired before React
+  // attached its handler — must never leave the loader hanging forever.
+  useEffect(() => {
+    if (loadProgress >= 100 || loadTimedOut) return;
+    const timer = window.setTimeout(() => setLoadTimedOut(true), LOAD_WATCHDOG_MS);
+    return () => window.clearTimeout(timer);
+  }, [loadProgress, loadTimedOut]);
+
+  useEffect(() => () => {
+    if (authorizeTimerRef.current !== null) window.clearTimeout(authorizeTimerRef.current);
+  }, []);
+
   const rememberSound = useCallback((enabled: boolean): void => {
     try {
       window.localStorage.setItem(AUDIO_PREFERENCE_KEY, String(enabled));
@@ -50,7 +64,8 @@ export const App = () => {
     void audio.start(withSound);
     setSoundEnabled(withSound);
     rememberSound(withSound);
-    window.setTimeout(() => setAuthorized(true), 720);
+    if (authorizeTimerRef.current !== null) window.clearTimeout(authorizeTimerRef.current);
+    authorizeTimerRef.current = window.setTimeout(() => setAuthorized(true), 720);
   }, [getAudio, rememberSound]);
 
   const prepareAudio = useCallback((): void => {
@@ -85,6 +100,10 @@ export const App = () => {
 
   return (
     <>
+      {/* The visible wordmark belongs to the entry gate, which unmounts on
+          entry, so the document heading is kept here instead. */}
+      <h1 className="visually-hidden">The Vault — an interactive containment experiment</h1>
+
       {reducedMotion ? (
         <ReducedMotionExperience
           authorized={authorized}
@@ -109,7 +128,7 @@ export const App = () => {
 
       {!authorized && (
         <EntryGate
-          ready={loadProgress === 100}
+          ready={loadProgress >= 100 || loadTimedOut}
           loadProgress={loadProgress}
           defaultSound={soundEnabled}
           onGesture={prepareAudio}

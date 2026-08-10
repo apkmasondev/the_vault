@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { asset, MEDIA } from '../app/constants';
 import { AudioToggle } from './AudioToggle';
 import { Finale } from './Finale';
@@ -27,8 +27,15 @@ export const ReducedMotionExperience = ({
   onReplay,
 }: ReducedMotionExperienceProps) => {
   const [step, setStep] = useState(0);
+  const posterRef = useRef<HTMLImageElement>(null);
   const [primary, secondary] = reducedCopy[step]!;
   const final = step === reducedCopy.length - 1;
+
+  // A cached poster can finish loading before React attaches onLoad, so the
+  // ready state is also confirmed from the element itself on mount.
+  useEffect(() => {
+    if (posterRef.current?.complete) onLoadProgress(100);
+  }, [onLoadProgress]);
 
   const replay = (): void => {
     setStep(0);
@@ -38,12 +45,14 @@ export const ReducedMotionExperience = ({
   return (
     <main className={`reduced-experience reduced-experience--step-${step}`}>
       <img
+        ref={posterRef}
         className="reduced-experience__image reduced-experience__image--closed"
         src={asset(MEDIA.poster)}
         alt="A sealed industrial containment vault"
         draggable={false}
         fetchPriority="high"
         onLoad={() => onLoadProgress(100)}
+        onError={() => onLoadProgress(100)}
       />
       <img
         className="reduced-experience__image reduced-experience__image--open"

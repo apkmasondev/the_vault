@@ -1,3 +1,6 @@
+import { RAMPS } from '../app/constants';
+import { clamp } from '../utils/math';
+
 export class AudioEngine {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -30,7 +33,7 @@ export class AudioEngine {
   update(progress: number): void {
     if (!this.context || !this.atmosphere || !this.filter) return;
     const now = this.context.currentTime;
-    const intensity = Math.max(0, Math.min(1, (progress - 0.35) / 0.6));
+    const intensity = clamp((progress - RAMPS.audioIntensityStart) / RAMPS.audioIntensitySpan);
     this.atmosphere.gain.setTargetAtTime(0.78 + intensity * 0.18, now, 0.18);
     this.filter.frequency.setTargetAtTime(9_500 + intensity * 5_000, now, 0.22);
   }
