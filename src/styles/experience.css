@@ -10,6 +10,8 @@
   --pointer-y: 0;
   --media-x: 0px;
   --media-y: 0px;
+  --charge: 0;
+  --glow: 0;
   position: sticky;
   top: 0;
   width: 100%;
@@ -85,6 +87,31 @@
 
 .vault-canvas.is-fallback {
   display: none;
+}
+
+/*
+ * Light bleeding out of the object and around the edges of the frame, so the
+ * WebGL layer and the interface read as one lit space rather than two stacked
+ * surfaces.
+ */
+.stage::after {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  content: '';
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(232, 186, 120, calc(var(--glow) * 0.09)) 0%,
+    rgba(180, 120, 56, calc(var(--glow) * 0.05)) 34%,
+    transparent 68%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.hud,
+.chapters {
+  text-shadow: 0 0 calc(var(--glow) * 1.6rem) rgba(215, 183, 122, calc(var(--glow) * 0.5));
 }
 
 .cue-object .stage-shade,

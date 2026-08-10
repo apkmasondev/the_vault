@@ -154,6 +154,12 @@ export const AboutPanel = ({
             same point on screen. Everything after that — the object, its fissures, the drifting
             particulate, the haze — is generated live, which is why it can react to you at all.
           </p>
+          <p>
+            That scene is then run through three extra passes: the hot parts of the frame are
+            isolated and blurred into a bloom, a shock ring warps the image outward on impact, and
+            colour separates toward the corners under a light film grain. All of it keeps its
+            transparency, so the glow still falls across the footage underneath.
+          </p>
         </section>
 
         <section className="about__section">
@@ -197,10 +203,11 @@ export const AboutPanel = ({
           <h3>Built to survive the device it lands on</h3>
           <p>
             Render quality is picked from device memory, core count, pointer type and the Save-Data
-            hint, then dropped a tier automatically if frame times slip. A phone gets smaller films
-            and a lighter scene. If WebGL is missing the object falls back to a CSS rendering, if a
-            film fails a still frame covers the gap, and if the visitor prefers reduced motion the
-            whole sequence becomes a click-through with no movement at all.
+            hint, then dropped a tier automatically if frame times slip — the bloom chain is the
+            first thing to go, since it costs the most for the least. A phone gets smaller films and
+            a lighter scene. If WebGL is missing the object falls back to a CSS rendering, if a film
+            fails a still frame covers the gap, and if the visitor prefers reduced motion the whole
+            sequence becomes a click-through with no movement at all.
           </p>
         </section>
 

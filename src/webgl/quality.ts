@@ -11,6 +11,8 @@ export interface QualityProfile {
   readonly particles: number;
   readonly stars: number;
   readonly geometryDetail: number;
+  /** The bloom chain is the first thing dropped on a struggling device. */
+  readonly postProcessing: boolean;
 }
 
 const profileFor = (tier: QualityTier): QualityProfile => {
@@ -24,6 +26,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       particles: 1050,
       stars: 440,
       geometryDetail: 4,
+      postProcessing: true,
     };
   }
 
@@ -34,6 +37,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       particles: 620,
       stars: 270,
       geometryDetail: 3,
+      postProcessing: true,
     };
   }
 
@@ -43,6 +47,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
     particles: 300,
     stars: 140,
     geometryDetail: 2,
+    postProcessing: false,
   };
 };
 

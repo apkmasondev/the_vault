@@ -390,6 +390,8 @@ export const Experience = ({
           audioMid: bands.mid,
           audioHigh: bands.high,
         });
+        // The object's own light spills out of the canvas and into the interface.
+        stage?.style.setProperty('--glow', (rendererRef.current?.getGlow() ?? 0).toFixed(3));
 
         if (progressRef.current) {
           progressRef.current.textContent = String(Math.round(displayProgress * 100)).padStart(3, '0');

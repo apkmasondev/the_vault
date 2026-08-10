@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RAMPS } from '../app/constants';
 import { clamp, smoothstep } from '../utils/math';
+import { PostChain } from './PostChain';
 import { degradeQuality, selectInitialQuality, type QualityProfile, type QualityTier } from './quality';
 
 const coreVertexShader = /* glsl */ `
@@ -79,12 +80,12 @@ const coreFragmentShader = /* glsl */ `
     vec3 heat = vec3(0.94, 0.72, 0.39);
     vec3 color = mix(obsidian, oldGold, fissure * 0.8 + fresnel * 0.32);
     color += heat * (
-      fissure * (0.32 + uPulse * 0.55 + uCharge * 0.9)
+      fissure * (0.32 + uPulse * 0.4 + uCharge * 0.55)
       + uFailure * fresnel * 0.12
       + uAudio.z * fresnel * 0.22
     );
     // The side under the pointer runs hotter, so the object tracks your hand.
-    color += heat * facing * fissure * uCharge * 0.45;
+    color += heat * facing * fissure * uCharge * 0.28;
     float alpha = uReveal * (0.92 + fresnel * 0.08);
     gl_FragColor = vec4(color, alpha);
   }
@@ -211,10 +212,14 @@ export class VaultRenderer {
   private readonly frameTimes = new Float32Array(180);
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
+  private readonly drawingBuffer = new THREE.Vector2();
+  private postChain: PostChain | null = null;
   private quality: QualityProfile;
   private elapsed = 0;
   private pulseAmount = 0;
   private shock = 0;
+  private reveal = 0;
+  private charge = 0;
   private spinVelocity = 0;
   private frameCursor = 0;
   private sampledFrames = 0;
@@ -350,6 +355,7 @@ export class VaultRenderer {
     this.scene.add(this.artifact);
 
     this.artifact.visible = false;
+    if (this.quality.postProcessing) this.postChain = new PostChain(this.renderer);
     this.canvas.addEventListener('webglcontextlost', this.handleContextLost);
     this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     this.resize();
@@ -364,6 +370,8 @@ export class VaultRenderer {
     this.shock = Math.max(0, this.shock - deltaSeconds * 1.55);
     const reveal = smoothstep(RAMPS.revealFadeStart, RAMPS.revealFadeEnd, progress);
     const failure = smoothstep(RAMPS.failureFadeStart, RAMPS.failureFadeEnd, progress);
+    this.reveal = reveal;
+    this.charge = charge;
     this.artifact.visible = reveal > 0.002 && progress < RAMPS.artifactHiddenAfter;
 
     const core = this.coreMaterial.uniforms;
@@ -417,8 +425,32 @@ export class VaultRenderer {
     const scale = 0.65 + reveal * 0.35 + this.pulseAmount * 0.035 + charge * 0.07;
     this.artifact.scale.setScalar(scale);
 
-    this.renderer.render(this.scene, this.camera);
+    // The camera loses its footing as containment gives way, and again on impact.
+    const shake = (failure * 0.02 + this.shock * 0.028) * reveal;
+    this.camera.position.x = Math.sin(this.elapsed * 37.1) * shake;
+    this.camera.position.y = Math.cos(this.elapsed * 41.7) * shake;
+
+    if (this.postChain) {
+      this.postChain.render(this.scene, this.camera, {
+        time: this.elapsed,
+        shock: this.shock,
+        bloom: 0.55 + charge * 0.3 + failure * 0.18,
+        aberration: 0.4 + charge * 1.1 + failure * 1.6,
+        grain: 0.035 + failure * 0.05,
+      });
+    } else {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, this.camera);
+    }
     this.samplePerformance(deltaSeconds);
+  }
+
+  /**
+   * How much light the object is throwing right now, for the interface to bleed
+   * into the surrounding page.
+   */
+  getGlow(): number {
+    return clamp(this.reveal * (this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7));
   }
 
   /** Releases stored charge as an impact. Returns false if there was none. */
@@ -441,13 +473,21 @@ export class VaultRenderer {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    this.renderer.getDrawingBufferSize(this.drawingBuffer);
+    this.postChain?.setSize(
+      Math.max(1, Math.floor(this.drawingBuffer.x)),
+      Math.max(1, Math.floor(this.drawingBuffer.y)),
+    );
   }
 
   reset(): void {
     this.elapsed = 0;
     this.pulseAmount = 0;
     this.shock = 0;
+    this.reveal = 0;
+    this.charge = 0;
     this.spinVelocity = 0;
+    this.camera.position.set(0, 0, 6);
     this.artifact.rotation.set(0, 0, 0);
     this.artifact.visible = false;
   }
@@ -467,6 +507,8 @@ export class VaultRenderer {
     this.geometries.forEach((geometry) => geometry.dispose());
     this.materials.forEach((material) => material.dispose());
     this.haloTexture.dispose();
+    this.postChain?.dispose();
+    this.postChain = null;
     this.renderer.dispose();
   }
 
@@ -537,6 +579,11 @@ export class VaultRenderer {
 
   private applyQuality(profile: QualityProfile): void {
     this.quality = profile;
+    // Dropping the bloom chain is the cheapest large saving available.
+    if (!profile.postProcessing && this.postChain) {
+      this.postChain.dispose();
+      this.postChain = null;
+    }
     this.renderer.setPixelRatio(profile.dpr);
     this.particleGeometry.setDrawRange(0, Math.min(profile.particles, this.particleGeometry.getAttribute('position').count));
     this.starGeometry.setDrawRange(0, Math.min(profile.stars, this.starGeometry.getAttribute('position').count));
