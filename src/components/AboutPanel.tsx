@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { asset, MEDIA, VIDEO_FPS } from '../app/constants';
 import type { TelemetryReader } from '../app/telemetry';
 import { SequenceMap } from './SequenceMap';
@@ -29,6 +29,32 @@ const READOUTS = [
   ['WALL STRIKES', 'strikes'],
   ['STRUCTURAL INTEGRITY', 'integrity'],
 ] as const;
+
+interface ClassifiedFieldProps {
+  readonly label: string;
+  readonly value: string;
+  readonly mask: string;
+}
+
+const ClassifiedField = ({ label, value, mask }: ClassifiedFieldProps) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className="classified-field">
+      <span className="classified-field__label">{label}</span>
+      <button
+        type="button"
+        className={`classified-field__value${revealed ? ' is-revealed' : ''}`}
+        aria-expanded={revealed}
+        aria-label={revealed
+          ? `${label}: ${value}. Conceal field`
+          : `${label}. Classified. Reveal field`}
+        onClick={() => setRevealed((current) => !current)}
+      >
+        <span aria-hidden="true">{revealed ? value : mask}</span>
+      </button>
+    </div>
+  );
+};
 
 /**
  * The exhibit label for the whole piece. It explains the mechanism, and then
@@ -155,6 +181,19 @@ export const AboutPanel = ({
             SEAL INTACT
           </figcaption>
         </figure>
+
+        <aside className="about__classified" aria-label="Restricted archive fields">
+          <ClassifiedField
+            label="Recovery site"
+            value="NORTH ANNEX // SUBLEVEL 07"
+            mask="████████████████"
+          />
+          <ClassifiedField
+            label="Containment order"
+            value="IRON SLEEP // NO EXPIRY"
+            mask="██████████████"
+          />
+        </aside>
 
         {live && (
           <section className="about__section">

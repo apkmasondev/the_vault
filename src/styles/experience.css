@@ -666,11 +666,21 @@
   letter-spacing: 0.18em;
 }
 
+.stage.is-reversing .narrative__secondary {
+  color: rgba(174, 196, 194, 0.82);
+}
+
 /* The opening beat is deliberately not hidden: it is what tells a visitor the
    sequence has started before the door begins to move. */
 .cue-opening .narrative,
 .cue-final .narrative {
   opacity: 0;
+}
+
+/* Forward opening is intentionally silent, but reverse travel needs explicit
+   confirmation that the aperture is closing rather than opening again. */
+.cue-opening.is-reversing .narrative {
+  opacity: 1;
 }
 
 .cue-warning .narrative,
@@ -818,6 +828,29 @@
   padding: 0.72rem 1rem 0.78rem;
   border-inline: 1px solid rgba(215, 183, 122, 0.22);
   background: linear-gradient(90deg, transparent, rgba(215, 183, 122, 0.055), transparent);
+}
+
+.finale__operator {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 0.7rem;
+  max-width: 34rem;
+  margin: 0.9rem 0 0 !important;
+  color: rgba(232, 228, 219, 0.7);
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.56rem;
+  line-height: 1.6;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.finale__operator span {
+  color: var(--text-muted);
+}
+
+.finale--destroyed .finale__operator {
+  color: var(--danger);
 }
 
 .finale__note {
@@ -1167,6 +1200,59 @@
 }
 
 .about__plate figcaption span {
+  color: var(--accent);
+}
+
+.about__classified {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0.75rem 0 0;
+  padding: 1px;
+  background: var(--line);
+}
+
+.classified-field {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(9rem, 1.2fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 3.2rem;
+  padding: 0.55rem 0.7rem;
+  background: #070808;
+}
+
+.classified-field__label,
+.classified-field__value {
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.48rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.classified-field__label {
+  color: var(--text-muted);
+}
+
+.classified-field__value {
+  min-height: 1.85rem;
+  padding: 0.38rem 0.5rem;
+  overflow: hidden;
+  border: 0;
+  background: rgba(232, 228, 219, 0.14);
+  color: rgba(4, 5, 5, 0.92);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.classified-field__value:hover {
+  background: rgba(232, 228, 219, 0.2);
+}
+
+.classified-field__value.is-revealed {
+  background: rgba(215, 183, 122, 0.06);
   color: var(--accent);
 }
 
@@ -1718,6 +1804,14 @@
     font-size: 0.44rem;
   }
 
+  .about__classified {
+    grid-template-columns: 1fr;
+  }
+
+  .classified-field {
+    grid-template-columns: minmax(7rem, 0.75fr) minmax(9rem, 1.25fr);
+  }
+
   .about__details-body {
     grid-template-columns: 1fr;
     gap: 1.5rem;
@@ -1750,6 +1844,11 @@
 
   .finale__record dd {
     font-size: 0.54rem;
+  }
+
+  .finale__operator {
+    max-width: 18rem;
+    font-size: 0.5rem;
   }
 
   .finale__actions {

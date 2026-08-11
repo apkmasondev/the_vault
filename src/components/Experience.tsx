@@ -92,6 +92,31 @@ const destroyedCueCopy: Partial<Record<TimelineCue, readonly [string, string?]>>
   collapse: ['V-07 IS GONE', 'IT TOOK NOTHING WITH IT'],
 };
 
+/** Copy shown when the visitor runs the physical sequence backwards. */
+const reverseCueCopy: Partial<Record<TimelineCue, readonly [string, string?]>> = {
+  sequence: ['REVERSING LOCK SEQUENCE', 'MECHANICAL STATE RESTORING'],
+  disengaged: ['LOCK SEQUENCE', 'RE-ENGAGING'],
+  released: ['RECONTAINMENT IN PROGRESS', 'LOCKS RE-ENGAGING'],
+  warning: ['RECONTAINMENT IN PROGRESS', 'AUTHORIZATION WITHDRAWN'],
+  opening: ['CONTAINMENT APERTURE', 'CLOSING'],
+  object: ['CONTACT WINDOW CLOSING', 'SPECIMEN WITHDRAWING'],
+  origin: ['CONTACT WINDOW CLOSING', 'RESPONSE FADING'],
+  stability: ['RECONTAINMENT PROTOCOL', 'CHARGE DISSIPATING'],
+  failure: ['FAILURE STATE REVERSING', 'LAST STABLE FRAME SEARCHING'],
+  collapse: ['ARCHIVE STATE RESTORING', 'CONTAINMENT RECORD REWINDING'],
+};
+
+/** Destruction is permanent and therefore outranks the direction of travel. */
+export const copyForCue = (
+  cue: TimelineCue,
+  destroyed: boolean,
+  reversing: boolean,
+): readonly [string, string?] => (
+  (destroyed && destroyedCueCopy[cue]) ||
+  (!destroyed && reversing && reverseCueCopy[cue]) ||
+  cueCopy[cue]
+);
+
 export const Experience = ({
   authorized,
   soundEnabled,
@@ -123,6 +148,8 @@ export const Experience = ({
   const progressRef = useRef<HTMLSpanElement>(null);
   const debugRef = useRef<HTMLPreElement>(null);
   const authorizedRef = useRef(authorized);
+  const lastScrollYRef = useRef(0);
+  const reversingRef = useRef(false);
   const displayProgressRef = useRef(0);
   const pointerRef = useRef({ targetX: 0, targetY: 0, x: 0, y: 0 });
   const scrubbersRef = useRef<{ first: VideoScrubber; second: VideoScrubber } | null>(null);
@@ -139,6 +166,7 @@ export const Experience = ({
   const [video2Ready, setVideo2Ready] = useState(false);
   const [video2Failed, setVideo2Failed] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
+  const [isReversing, setIsReversing] = useState(false);
   const [cue, setCue] = useState<TimelineCue>('idle');
   const [chapterId, setChapterId] = useState(() => chapterIdForProgress(0));
   const [debugVisible, setDebugVisible] = useState(false);
@@ -206,10 +234,22 @@ export const Experience = ({
   }, []);
 
   useEffect(() => {
+    lastScrollYRef.current = window.scrollY;
     // Not `once`: a scroll event fired before authorization would otherwise
     // consume the listener and leave the scroll hint on screen permanently.
     const handleScroll = (): void => {
-      if (authorizedRef.current) setHasScrolled(true);
+      const nextScrollY = window.scrollY;
+      const delta = nextScrollY - lastScrollYRef.current;
+      lastScrollYRef.current = nextScrollY;
+      if (!authorizedRef.current) return;
+
+      setHasScrolled(true);
+      if (Math.abs(delta) < 1) return;
+      const nextReversing = delta < 0;
+      if (nextReversing !== reversingRef.current) {
+        reversingRef.current = nextReversing;
+        setIsReversing(nextReversing);
+      }
     };
     const handleKey = (event: KeyboardEvent): void => {
       if (import.meta.env.DEV && event.key.toLowerCase() === 'd') {
@@ -444,7 +484,7 @@ export const Experience = ({
   ]);
 
   const { destroyed } = interaction;
-  const [primary, secondary] = (destroyed && destroyedCueCopy[cue]) || cueCopy[cue];
+  const [primary, secondary] = copyForCue(cue, destroyed, isReversing);
   const finaleVisible = cue === 'final';
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
@@ -459,6 +499,8 @@ export const Experience = ({
     failureHoldUntilRef.current = 0;
     displayProgressRef.current = 0;
     interaction.reset();
+    reversingRef.current = false;
+    setIsReversing(false);
     setHasScrolled(false);
     onReplay();
   };
@@ -467,7 +509,7 @@ export const Experience = ({
     <main>
       <section className="experience" ref={sectionRef} aria-label="The Vault containment sequence">
         <div
-          className={`stage cue-${cue}`}
+          className={`stage cue-${cue}${isReversing ? ' is-reversing' : ''}`}
           ref={stageRef}
           onPointerMove={(event) => {
             pointerRef.current.targetX = (event.clientX / window.innerWidth) * 2 - 1;
@@ -547,7 +589,7 @@ export const Experience = ({
               replays its entrance instead of the text swapping in place. */}
           {authorized && (hasScrolled || cue !== 'idle') && (
             <>
-              <div className="narrative" key={`${cue}-${destroyed}`} aria-hidden="true">
+              <div className="narrative" key={`${cue}-${destroyed}-${isReversing}`} aria-hidden="true">
                 <p className="narrative__primary">{primary}</p>
                 {secondary && <p className="narrative__secondary">{secondary}</p>}
               </div>

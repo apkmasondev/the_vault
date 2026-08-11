@@ -77,6 +77,7 @@ export const ReducedMotionExperience = ({
               strikes={0}
               resonant={false}
               destroyed={false}
+              observationOnly
               onAbout={onOpenAbout}
               onReplay={replay}
             />

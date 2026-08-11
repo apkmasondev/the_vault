@@ -85,4 +85,19 @@ describe('AboutPanel', () => {
     expect(screen.getByText('Live instrumentation')).toBeTruthy();
     expect(screen.getByLabelText('Sequence position')).toBeTruthy();
   });
+
+  it('reveals and conceals classified archive fields accessibly', () => {
+    panel();
+    const field = screen.getByRole('button', {
+      name: 'Recovery site. Classified. Reveal field',
+    });
+    expect(field.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(field);
+    expect(field.getAttribute('aria-expanded')).toBe('true');
+    expect(field.getAttribute('aria-label')).toContain('NORTH ANNEX // SUBLEVEL 07');
+
+    fireEvent.click(field);
+    expect(field.getAttribute('aria-expanded')).toBe('false');
+  });
 });

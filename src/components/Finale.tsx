@@ -3,6 +3,8 @@ interface FinaleProps {
   readonly strikes: number;
   readonly resonant: boolean;
   readonly destroyed: boolean;
+  /** Reduced-motion observation mode never offers direct specimen contact. */
+  readonly observationOnly?: boolean;
   readonly onAbout: () => void;
   readonly onReplay: () => void;
 }
@@ -21,6 +23,22 @@ const lead = ({ contacts, resonant, destroyed }: FinaleProps): string => {
   return contacts > 0
     ? 'You reached in, and it reached back. The chamber gave way a few seconds later.'
     : 'You never touched it. The chamber gave way anyway, in its own time.';
+};
+
+export const operatorTrace = ({
+  contacts,
+  strikes,
+  resonant,
+  destroyed,
+  observationOnly,
+}: Pick<FinaleProps, 'contacts' | 'strikes' | 'resonant' | 'destroyed' | 'observationOnly'>): string => {
+  if (observationOnly) return 'OBSERVATION MODE — NO CONTACT REQUESTED';
+  if (destroyed) return 'OPERATOR CAUSED TOTAL SPECIMEN LOSS';
+  if (resonant) return 'SPECIMEN ACKNOWLEDGED OPERATOR';
+  if (strikes >= 3) return 'REPEATED FORCE RECORDED';
+  if (strikes > 0) return 'FORCE APPLIED TO SPECIMEN';
+  if (contacts > 0) return 'DIRECT CONTACT CONFIRMED';
+  return 'OPERATOR REFUSED CONTACT';
 };
 
 export const Finale = (props: FinaleProps) => {
@@ -44,6 +62,10 @@ export const Finale = (props: FinaleProps) => {
           <dd>{destroyed ? 'SPECIMEN LOST' : resonant ? 'RESONANCE LOGGED' : 'BREACH RECORDED'}</dd>
         </div>
       </dl>
+      <p className="finale__operator">
+        <span>OPERATOR TRACE //</span>
+        {operatorTrace(props)}
+      </p>
       {destroyed && (
         <p className="finale__note">
           It cannot be put back. Run the sequence again and it will be whole, and you can decide
