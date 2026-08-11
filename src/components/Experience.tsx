@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  asset,
-  MEDIA,
   RAMPS,
   SCROLL_DAMPING_SECONDS,
   TIMELINE,
@@ -9,8 +7,6 @@ import {
 } from '../app/constants';
 import type { AudioBands } from '../audio/AudioEngine';
 import type { Telemetry } from '../app/telemetry';
-import { HoldGesture } from '../interaction/holdGesture';
-import { ScrollDirector } from '../media/ScrollDirector';
 import { VideoScrubber } from '../media/VideoScrubber';
 import { selectVideoSources } from '../media/videoSources';
 import { clamp, damp, smoothstep } from '../utils/math';
@@ -21,35 +17,18 @@ import {
   video1TimeForProgress,
   video2TimeForProgress,
 } from '../utils/timeline';
-import type { VaultRenderer } from '../webgl/VaultRenderer';
-import { AudioToggle } from './AudioToggle';
+import { useArtifactInteraction } from '../hooks/useArtifactInteraction';
+import { useCinematicScroll } from '../hooks/useCinematicScroll';
+import { useVaultRenderer } from '../hooks/useVaultRenderer';
+import { ArtifactSurface } from './ArtifactSurface';
 import { ChapterRail } from './ChapterRail';
 import { Finale } from './Finale';
+import { MediaStack } from './MediaStack';
+import { StageHud } from './StageHud';
 
 const MINIMUM_FAILURE_DURATION_MS = 2_400;
-/** How long a hands-off run of the entire timeline takes. */
-const CINEMATIC_DURATION_MS = 62_000;
-/** Seconds of continuous contact needed to bring the core to full charge. */
-const CHARGE_SECONDS = 1.5;
-/** A release at or above this counts toward the hidden resonance. */
-const RESONANT_CHARGE = 0.8;
-const RESONANT_RELEASES = 3;
 /** Point in the sequence at which the opening film starts downloading. */
 const OPENING_FILM_PREFETCH = 0.2;
-/** Seconds of being ignored before the object starts asking to be touched. */
-const INVITE_DELAY_SECONDS = 4;
-const INVITE_RAMP_SECONDS = 2;
-
-/** Keys that shove the object, so the physics is reachable without a pointer. */
-const NUDGE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-  ArrowUp: [0, -1],
-  ArrowDown: [0, 1],
-};
-const SCROLL_KEYS = new Set([
-  'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ', 'Spacebar',
-]);
 
 export interface VaultControls {
   /** `smooth` is for deliberate jumps; scrubbing wants the instant form. */
@@ -138,61 +117,45 @@ export const Experience = ({
   const video2Ref = useRef<HTMLVideoElement>(null);
   const transitionRef = useRef<HTMLImageElement>(null);
   const posterRef = useRef<HTMLImageElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const progressRef = useRef<HTMLSpanElement>(null);
   const debugRef = useRef<HTMLPreElement>(null);
   const authorizedRef = useRef(authorized);
   const displayProgressRef = useRef(0);
   const pointerRef = useRef({ targetX: 0, targetY: 0, x: 0, y: 0 });
-  const rendererRef = useRef<VaultRenderer | null>(null);
   const scrubbersRef = useRef<{ first: VideoScrubber; second: VideoScrubber } | null>(null);
   const failureHoldUntilRef = useRef(0);
   const failureSeenRef = useRef(false);
-  const interactionTimerRef = useRef<number | null>(null);
-  const fractureTimerRef = useRef<number | null>(null);
   // Read inside the animation loop so a late-arriving second video cannot force
   // the loop to be torn down and restarted mid-scroll.
   const video2ReadyRef = useRef(false);
   const video2FailedRef = useRef(false);
-  // Scroll geometry, kept outside the loop so seeking can use it too.
-  const sectionTopRef = useRef(0);
-  const scrollDistanceRef = useRef(1);
   const frameScaleRef = useRef(1);
-  const directorRef = useRef(new ScrollDirector());
-  const cinematicRef = useRef(false);
-  const contactsRef = useRef(0);
-  const chargeRef = useRef(0);
-  const gestureRef = useRef(new HoldGesture());
-  const resonantReleasesRef = useRef(0);
-  const strikesRef = useRef(0);
-  const strikeTimerRef = useRef<number | null>(null);
-  const lastTouchedAtRef = useRef(0);
-  const artifactExposedRef = useRef(false);
   const openingFilmRequestedRef = useRef(false);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
   const [video2Failed, setVideo2Failed] = useState(false);
-  const [webglReady, setWebglReady] = useState(false);
-  const [webglFailed, setWebglFailed] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [cue, setCue] = useState<TimelineCue>('idle');
   const [chapterId, setChapterId] = useState(() => chapterIdForProgress(0));
   const [debugVisible, setDebugVisible] = useState(false);
-  const [artifactResponding, setArtifactResponding] = useState(false);
-  const [charging, setCharging] = useState(false);
-  const [carrying, setCarrying] = useState(false);
-  const [struck, setStruck] = useState(false);
-  const [destroyed, setDestroyed] = useState(false);
   const integrityRef = useRef<HTMLSpanElement>(null);
-  const [fractured, setFractured] = useState(false);
-  const [resonant, setResonant] = useState(false);
+  const { canvasRef, rendererRef, webglReady, webglFailed } = useVaultRenderer();
+  const {
+    sectionTopRef, scrollDistanceRef, seek, toggleCinematic, stopCinematic, advance,
+  } = useCinematicScroll(onCinematicChange, cinematicRunning);
+  const interaction = useArtifactInteraction(rendererRef, {
+    onChargeStart, onChargeChange, onChargeRelease, onWallImpact, onDestroyed, onFracture,
+  });
+  // Only the stable half of the interaction may reach the animation loop. The
+  // returned object is rebuilt on every render, and depending on it would tear
+  // the loop down and rebuild it every time any of this state changed.
+  const { beginFrame, endFrame, chargeRef, contactsRef, strikesRef } = interaction;
   const sources = useMemo(selectVideoSources, []);
 
   authorizedRef.current = authorized;
   video2ReadyRef.current = video2Ready;
   video2FailedRef.current = video2Failed;
-  cinematicRef.current = cinematicRunning;
   telemetry.resolution = sources.resolution;
 
   useEffect(() => {
@@ -219,41 +182,6 @@ export const Experience = ({
       scrubbers.first.destroy();
       scrubbers.second.destroy();
       if (scrubbersRef.current === scrubbers) scrubbersRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => () => {
-    if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
-    if (fractureTimerRef.current !== null) window.clearTimeout(fractureTimerRef.current);
-    if (strikeTimerRef.current !== null) window.clearTimeout(strikeTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    let disposed = false;
-    let renderer: VaultRenderer | null = null;
-
-    const initialize = async (): Promise<void> => {
-      try {
-        const module = await import('../webgl/VaultRenderer');
-        if (disposed) return;
-        renderer = new module.VaultRenderer(canvas, setWebglFailed);
-        rendererRef.current = renderer;
-        setWebglReady(true);
-      } catch {
-        if (!disposed) {
-          setWebglFailed(true);
-          setWebglReady(true);
-        }
-      }
-    };
-
-    void initialize();
-    return () => {
-      disposed = true;
-      renderer?.dispose();
-      if (rendererRef.current === renderer) rendererRef.current = null;
     };
   }, []);
 
@@ -293,51 +221,6 @@ export const Experience = ({
     };
   }, []);
 
-  const stopCinematic = useCallback((): void => {
-    if (!directorRef.current.isRunning && !cinematicRef.current) return;
-    directorRef.current.stop();
-    cinematicRef.current = false;
-    onCinematicChange(false);
-  }, [onCinematicChange]);
-
-  // Any real navigation intent hands control straight back to the visitor.
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent): void => {
-      if (SCROLL_KEYS.has(event.key)) stopCinematic();
-    };
-    window.addEventListener('wheel', stopCinematic, { passive: true });
-    window.addEventListener('touchmove', stopCinematic, { passive: true });
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      window.removeEventListener('wheel', stopCinematic);
-      window.removeEventListener('touchmove', stopCinematic);
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [stopCinematic]);
-
-  const seek = useCallback((progress: number, smooth = true): void => {
-    stopCinematic();
-    window.scrollTo({
-      top: sectionTopRef.current + clamp(progress) * scrollDistanceRef.current,
-      behavior: smooth ? 'smooth' : 'auto',
-    });
-  }, [stopCinematic]);
-
-  const toggleCinematic = useCallback((): void => {
-    if (directorRef.current.isRunning) {
-      stopCinematic();
-      return;
-    }
-    const top = sectionTopRef.current;
-    const end = top + scrollDistanceRef.current;
-    // Restarting from the end rewinds first, otherwise there is nothing to play.
-    const from = window.scrollY >= end - 2 ? top : window.scrollY;
-    if (from !== window.scrollY) window.scrollTo({ top: from, behavior: 'auto' });
-    directorRef.current.start(from, end, CINEMATIC_DURATION_MS, performance.now());
-    cinematicRef.current = true;
-    onCinematicChange(true);
-  }, [onCinematicChange]);
-
   useEffect(() => {
     controls.current = { seek, toggleCinematic };
     return () => {
@@ -353,7 +236,6 @@ export const Experience = ({
     let displayProgress = displayProgressRef.current;
     let latestCue: TimelineCue = cueForProgress(displayProgress);
     let latestChapter = chapterIdForProgress(displayProgress);
-    let wasExposed = false;
     let pageVisible = !document.hidden;
 
     const measure = (): void => {
@@ -388,9 +270,7 @@ export const Experience = ({
       previousTime = now;
 
       if (pageVisible) {
-        const directed = directorRef.current.step(now);
-        if (directed !== null) window.scrollTo(0, directed);
-        else if (cinematicRef.current) stopCinematic();
+        advance(now);
 
         const targetProgress = authorizedRef.current
           ? clamp((window.scrollY - sectionTopRef.current) / scrollDistanceRef.current)
@@ -444,13 +324,7 @@ export const Experience = ({
         pointer.x = damp(pointer.x, pointer.targetX, 0.12, deltaSeconds);
         pointer.y = damp(pointer.y, pointer.targetY, 0.12, deltaSeconds);
 
-        // Charge builds only while the object is held still; moving it is a
-        // different intent and gives the charge back.
-        const holdingStill = gestureRef.current.active && !gestureRef.current.isDragging;
-        chargeRef.current = holdingStill
-          ? Math.min(1, chargeRef.current + deltaSeconds / CHARGE_SECONDS)
-          : Math.max(0, chargeRef.current - deltaSeconds * 3);
-        if (holdingStill) onChargeChange(chargeRef.current);
+        beginFrame(deltaSeconds);
 
         const stage = stageRef.current;
         stage?.style.setProperty('--media-x', `${pointer.x * 3}px`);
@@ -472,34 +346,8 @@ export const Experience = ({
         // The object's own light spills out of the canvas and into the interface.
         stage?.style.setProperty('--glow', (rendererRef.current?.getGlow() ?? 0).toFixed(3));
 
-        // Wall strikes originate inside the physics step, so they are collected
-        // here rather than raised from an event.
-        const impact = rendererRef.current?.consumeImpact() ?? 0;
-        if (impact > 0) {
-          strikesRef.current += 1;
-          onWallImpact(impact);
-          setStruck(true);
-          if (strikeTimerRef.current !== null) window.clearTimeout(strikeTimerRef.current);
-          strikeTimerRef.current = window.setTimeout(() => setStruck(false), 1_500);
-        }
-        if (rendererRef.current?.consumeDestruction()) {
-          setDestroyed(true);
-          onDestroyed();
-        }
 
-        // Left alone once it is out, the object starts inviting contact. Most
-        // visitors have no reason to suspect it can be touched at all.
-        const exposed = artifactExposedRef.current;
-        // The wait is measured from the object appearing, not from page load,
-        // or it arrives already asking and the invitation means nothing.
-        if (exposed && !wasExposed) lastTouchedAtRef.current = now;
-        wasExposed = exposed;
-        const idleSeconds = (now - lastTouchedAtRef.current) / 1000;
-        const inviting = exposed
-          ? clamp((idleSeconds - INVITE_DELAY_SECONDS) / INVITE_RAMP_SECONDS)
-          : 0;
-        rendererRef.current?.setInviting(inviting);
-        stage?.style.setProperty('--invite', inviting.toFixed(3));
+        stage?.style.setProperty('--invite', endFrame(now).toFixed(3));
 
         const integrity = rendererRef.current?.getIntegrity() ?? 1;
         telemetry.integrity = integrity;
@@ -572,99 +420,26 @@ export const Experience = ({
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [
-    onChargeChange,
-    onDestroyed,
+    advance,
+    beginFrame,
+    chargeRef,
+    contactsRef,
+    endFrame,
     onProgress,
     onVisibilityChange,
-    onWallImpact,
     readAudioBands,
     requestOpeningFilm,
     sources.resolution,
-    stopCinematic,
+    strikesRef,
     telemetry,
   ]);
 
+  const { destroyed } = interaction;
   const [primary, secondary] = (destroyed && destroyedCueCopy[cue]) || cueCopy[cue];
   const finaleVisible = cue === 'final';
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
-  artifactExposedRef.current = artifactInteractive && !webglFailed && !destroyed;
-
-  /** Any contact restarts the clock on the object asking to be noticed. */
-  const noteContact = (): void => {
-    lastTouchedAtRef.current = performance.now();
-  };
-
-  const nudgeArtifact = (directionX: number, directionY: number): void => {
-    noteContact();
-    rendererRef.current?.nudge(directionX, directionY);
-  };
-
-  const beginHold = (clientX: number, clientY: number): void => {
-    noteContact();
-    gestureRef.current.begin(clientX, clientY, performance.now());
-    setCharging(true);
-    onChargeStart();
-  };
-
-  const trackHold = (clientX: number, clientY: number): void => {
-    const gesture = gestureRef.current;
-    if (!gesture.active) return;
-    noteContact();
-
-    const { dragging, becameDrag, deltaX } = gesture.move(clientX, clientY, performance.now(), {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
-
-    if (becameDrag) {
-      // Moving is a different gesture from holding, so the charge is given back.
-      chargeRef.current = 0;
-      setCharging(false);
-      setCarrying(true);
-      onChargeRelease(0);
-    }
-    if (!dragging) return;
-    // The object is carried to the pointer, and spun by the sideways component.
-    rendererRef.current?.setGrab(
-      true,
-      (clientX / window.innerWidth) * 2 - 1,
-      (clientY / window.innerHeight) * 2 - 1,
-    );
-    rendererRef.current?.addSpin((deltaX / window.innerWidth) * 9);
-  };
-
-  const noteFracture = (): void => {
-    contactsRef.current += 1;
-    onFracture();
-    setFractured(true);
-    if (fractureTimerRef.current !== null) window.clearTimeout(fractureTimerRef.current);
-    fractureTimerRef.current = window.setTimeout(() => setFractured(false), 2_200);
-  };
-
-  const endHold = (): void => {
-    const gesture = gestureRef.current;
-    if (!gesture.active) return;
-    noteContact();
-    const charge = chargeRef.current;
-    const { dragging: wasDragging, throwX, throwY } = gesture.end();
-    setCharging(false);
-    setCarrying(false);
-    chargeRef.current = 0;
-    // Letting go hard enough breaks it open rather than simply setting it down.
-    if (rendererRef.current?.releaseGrab(throwX, throwY)) noteFracture();
-    onChargeRelease(wasDragging ? 0 : charge);
-    if (wasDragging || !rendererRef.current?.release(charge)) return;
-
-    contactsRef.current += 1;
-    if (charge >= RESONANT_CHARGE) {
-      resonantReleasesRef.current += 1;
-      if (resonantReleasesRef.current >= RESONANT_RELEASES) setResonant(true);
-    }
-    setArtifactResponding(true);
-    if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
-    interactionTimerRef.current = window.setTimeout(() => setArtifactResponding(false), 1_600);
-  };
+  interaction.exposedRef.current = artifactInteractive && !webglFailed && !destroyed;
 
   const replay = (): void => {
     stopCinematic();
@@ -674,19 +449,7 @@ export const Experience = ({
     failureSeenRef.current = false;
     failureHoldUntilRef.current = 0;
     displayProgressRef.current = 0;
-    contactsRef.current = 0;
-    chargeRef.current = 0;
-    resonantReleasesRef.current = 0;
-    strikesRef.current = 0;
-    setStruck(false);
-    setDestroyed(false);
-    gestureRef.current.end();
-    rendererRef.current?.setGrab(false);
-    setArtifactResponding(false);
-    setCarrying(false);
-    setCharging(false);
-    setFractured(false);
-    setResonant(false);
+    interaction.reset();
     setHasScrolled(false);
     onReplay();
   };
@@ -706,69 +469,24 @@ export const Experience = ({
             pointerRef.current.targetY = 0;
           }}
         >
-          <div className="media-stack" aria-hidden="true">
-            <img
-              ref={posterRef}
-              className="media-layer media-poster"
-              src={asset(MEDIA.poster)}
-              alt=""
-              draggable={false}
-              fetchPriority="high"
-              decoding="sync"
-              onLoad={() => setPosterReady(true)}
-              onError={() => {
-                setPosterReady(true);
-                onMediaError();
-              }}
-            />
-            <img
-              ref={transitionRef}
-              className="media-layer transition-fallback"
-              src={asset(MEDIA.transition)}
-              alt=""
-              draggable={false}
-            />
-            <video
-              ref={video1Ref}
-              className="media-layer video-layer video-layer--first"
-              src={sources.unlock}
-              muted
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              draggable={false}
-              tabIndex={-1}
-              onLoadedMetadata={(event) => {
-                event.currentTarget.pause();
-                setVideo1Ready(true);
-                scrubbersRef.current?.first.update(0, performance.now(), true);
-              }}
-              onError={() => {
-                setVideo1Ready(true);
-                onMediaError();
-              }}
-            />
-            <video
-              ref={video2Ref}
-              className="media-layer video-layer video-layer--second"
-              src={sources.opening}
-              muted
-              playsInline
-              preload="none"
-              disablePictureInPicture
-              draggable={false}
-              tabIndex={-1}
-              onLoadedData={(event) => {
-                event.currentTarget.pause();
-                setVideo2Ready(true);
-                scrubbersRef.current?.second.update(0, performance.now(), true);
-              }}
-              onError={() => {
-                setVideo2Failed(true);
-                onMediaError();
-              }}
-            />
-          </div>
+          <MediaStack
+            sources={sources}
+            posterRef={posterRef}
+            transitionRef={transitionRef}
+            video1Ref={video1Ref}
+            video2Ref={video2Ref}
+            onMediaError={onMediaError}
+            onPosterReady={() => setPosterReady(true)}
+            onUnlockReady={() => {
+              setVideo1Ready(true);
+              scrubbersRef.current?.first.update(0, performance.now(), true);
+            }}
+            onOpeningReady={() => {
+              setVideo2Ready(true);
+              scrubbersRef.current?.second.update(0, performance.now(), true);
+            }}
+            onOpeningFailed={() => setVideo2Failed(true)}
+          />
 
           <canvas ref={canvasRef} className={`vault-canvas${webglFailed ? ' is-fallback' : ''}`} aria-hidden="true" />
           <div className="stage-shade" aria-hidden="true" />
@@ -777,87 +495,29 @@ export const Experience = ({
             <p className="artifact-guidance is-lost">NOTHING LEFT TO TOUCH</p>
           )}
           {artifactInteractive && !webglFailed && !destroyed && (
-            <>
-              <button
-                className={`artifact-hit-target${charging ? ' is-charging' : ''}${carrying ? ' is-carrying' : ''}`}
-                type="button"
-                aria-label="The object. Hold to charge it, drag to carry it, or use the arrow keys to push it against the walls of the chamber."
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  beginHold(event.clientX, event.clientY);
-                }}
-                onPointerMove={(event) => trackHold(event.clientX, event.clientY)}
-                onPointerUp={endHold}
-                onPointerCancel={endHold}
-                onLostPointerCapture={endHold}
-                onKeyDown={(event) => {
-                  const nudge = NUDGE_KEYS[event.key];
-                  if (nudge) {
-                    // Held down, the repeats stack into a throw, which is the
-                    // only way to reach the wall without a pointer.
-                    event.preventDefault();
-                    nudgeArtifact(nudge[0], nudge[1]);
-                    return;
-                  }
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  event.preventDefault();
-                  if (!gestureRef.current.active) beginHold(0, 0);
-                }}
-                onKeyUp={(event) => {
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  event.preventDefault();
-                  endHold();
-                }}
-              />
-              <p className={`artifact-guidance${artifactResponding || struck ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
-                {fractured
-                  ? 'STRUCTURE BREACHED · IT IS CLOSING ITSELF'
-                  : struck
-                    ? 'IMPACT ON CONTAINMENT WALL · SURFACE GLOWING'
-                    : carrying
-                      ? 'THE OBJECT FOLLOWS YOU · THROW IT AT THE WALL'
-                      : resonant
-                        ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
-                        : charging
-                          ? 'CHARGING — RELEASE TO DISCHARGE'
-                          : artifactResponding
-                            ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
-                            : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
-              </p>
-            </>
+            <ArtifactSurface
+              phase={interaction.phase}
+              isHolding={interaction.isHolding}
+              onHoldStart={interaction.beginHold}
+              onHoldMove={interaction.trackHold}
+              onHoldEnd={interaction.endHold}
+              onNudge={interaction.nudge}
+            />
           )}
 
           {authorized && !finaleVisible && (
-            <div className="hud">
-              <div className="hud__identity"><span>V-07</span><span>CONTAINMENT</span></div>
-              <div className="hud__status">
-                <span>SYSTEM</span>
-                <span>{cue === 'failure' ? 'CRITICAL' : cue === 'collapse' ? 'NO SIGNAL' : 'MONITORING'}</span>
-              </div>
-              {/* Damage is permanent, so it has to be legible before it matters.
-                  Without this the object simply explodes for no visible reason. */}
-              {artifactInteractive && !webglFailed && (
-                <div className={`hud__integrity${destroyed ? ' is-lost' : ''}`}>
-                  <span>INTEGRITY</span>
-                  <span ref={integrityRef}>100%</span>
-                </div>
-              )}
-              <div className="hud__progress"><span ref={progressRef}>000</span><span>/ 100</span></div>
-              <div className="hud__controls">
-                <button
-                  className="hud__button"
-                  type="button"
-                  aria-pressed={cinematicRunning}
-                  onClick={toggleCinematic}
-                >
-                  {cinematicRunning ? 'STOP' : 'AUTO'}
-                </button>
-                <button className="hud__button" type="button" onClick={onOpenAbout}>
-                  ABOUT
-                </button>
-                <AudioToggle enabled={soundEnabled} onToggle={onToggleSound} />
-              </div>
-            </div>
+            <StageHud
+              cue={cue}
+              soundEnabled={soundEnabled}
+              cinematicRunning={cinematicRunning}
+              showIntegrity={artifactInteractive && !webglFailed}
+              destroyed={destroyed}
+              progressRef={progressRef}
+              integrityRef={integrityRef}
+              onToggleCinematic={toggleCinematic}
+              onOpenAbout={onOpenAbout}
+              onToggleSound={onToggleSound}
+            />
           )}
 
           {authorized && !finaleVisible && <ChapterRail activeId={chapterId} onSeek={seek} />}
@@ -888,7 +548,7 @@ export const Experience = ({
             <Finale
               contacts={contactsRef.current}
               strikes={strikesRef.current}
-              resonant={resonant}
+              resonant={interaction.phase.resonant}
               destroyed={destroyed}
               onAbout={onOpenAbout}
               onReplay={replay}
