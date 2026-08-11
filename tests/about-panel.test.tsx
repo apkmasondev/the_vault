@@ -84,6 +84,8 @@ describe('AboutPanel', () => {
     panel({ live: true });
     expect(screen.getByText('Live instrumentation')).toBeTruthy();
     expect(screen.getByLabelText('Sequence position')).toBeTruthy();
+    expect(screen.getByText('FRAME-ACCURATE')).toBeTruthy();
+    expect(screen.getByText('NONE — LOCAL ONLY')).toBeTruthy();
   });
 
   it('reveals and conceals classified archive fields accessibly', () => {

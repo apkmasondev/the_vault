@@ -30,6 +30,11 @@ const READOUTS = [
   ['STRUCTURAL INTEGRITY', 'integrity'],
 ] as const;
 
+const STATIC_READOUTS = [
+  ['SEEK MODE', 'FRAME-ACCURATE'],
+  ['DATA EGRESS', 'NONE — LOCAL ONLY'],
+] as const;
+
 interface ClassifiedFieldProps {
   readonly label: string;
   readonly value: string;
@@ -360,21 +365,39 @@ export const AboutPanel = ({
           <section className="about__section">
             <h3>Live instrumentation</h3>
             <p>Read straight out of the running experience, updated every frame.</p>
-            <dl className="about__readouts">
-              {READOUTS.map(([label, key]) => (
-                <div key={key}>
-                  <dt>{label}</dt>
-                  <dd
-                    ref={(element) => {
-                      if (element) readoutRefs.current.set(key, element);
-                      else readoutRefs.current.delete(key);
-                    }}
-                  >
-                    —
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <div className="about__readouts-frame">
+              <img
+                className="about__readouts-art"
+                src={asset(MEDIA.radioactiveOrb)}
+                alt=""
+                width="960"
+                height="512"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+              />
+              <dl className="about__readouts">
+                {READOUTS.map(([label, key]) => (
+                  <div key={key}>
+                    <dt>{label}</dt>
+                    <dd
+                      ref={(element) => {
+                        if (element) readoutRefs.current.set(key, element);
+                        else readoutRefs.current.delete(key);
+                      }}
+                    >
+                      —
+                    </dd>
+                  </div>
+                ))}
+                {STATIC_READOUTS.map(([label, value]) => (
+                  <div className="about__readout-static" key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           </section>
         )}
 
