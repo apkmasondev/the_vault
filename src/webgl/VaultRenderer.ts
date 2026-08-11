@@ -109,6 +109,8 @@ const coreFragmentShader = /* glsl */ `
   uniform float uHeat;
   uniform float uDamage;
   uniform float uShatter;
+  uniform float uInvite;
+  uniform float uTime;
   uniform vec3 uAudio;
   uniform vec3 uPointer;
   varying vec3 vNormal;
@@ -153,7 +155,11 @@ const coreFragmentShader = /* glsl */ `
     color += oldGold * fresnel * 0.46;
     // A hard glint keeps it reading as polished stone rather than matte clay.
     color += vec3(1.0, 0.88, 0.66) * pow(facingView, 22.0) * 0.09;
-    color += heat * ember * (0.05 + uCharge * 0.1 + glowing * 0.5) * occlusion;
+    // Left alone, it breathes: a slow swell along the veins, which is the only
+    // hint a visitor gets that the object will answer if they reach for it.
+    float breathing = 0.5 + 0.5 * sin(uTime * 1.9);
+    color += heat * ember * (0.05 + uCharge * 0.1 + glowing * 0.5 + uInvite * breathing * 0.4) * occlusion;
+    color += heat * vein * uInvite * breathing * 0.3;
     color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85 + glowing * 1.15);
     // The side under the pointer runs hotter, so the object tracks your hand.
     color += heat * facing * vein * uCharge * 0.35;
@@ -493,6 +499,7 @@ export class VaultRenderer {
   private split = 0;
   private splitVelocity = 0;
   private heat = 0;
+  private inviting = 0;
   private damage = 0;
   private shatter = 0;
   private destroyed = false;
@@ -563,6 +570,7 @@ export class VaultRenderer {
         uHeat: { value: 0 },
         uDamage: { value: 0 },
         uShatter: { value: 0 },
+        uInvite: { value: 0 },
       },
       vertexShader: coreVertexShader,
       fragmentShader: coreFragmentShader,
@@ -788,6 +796,7 @@ export class VaultRenderer {
     core.uHeat!.value = this.heat;
     core.uDamage!.value = this.damage;
     core.uShatter!.value = this.shatter;
+    core.uInvite!.value = this.inviting;
     (core.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
 
     for (const pool of this.debrisPools) pool.uniforms.uTime!.value = this.elapsed;
@@ -869,7 +878,8 @@ export class VaultRenderer {
     this.artifact.rotation.z = pointerX * 0.025 + this.grabOffset.x * 0.06;
     this.artifact.position.x = pointerX * 0.08 + this.grabOffset.x;
     this.artifact.position.y = Math.sin(this.elapsed * 0.42) * 0.08 - pointerY * 0.035 + this.grabOffset.y;
-    const scale = 0.65 + reveal * 0.35 + this.pulseAmount * 0.035 + charge * 0.07;
+    const scale = 0.65 + reveal * 0.35 + this.pulseAmount * 0.035 + charge * 0.07
+      + this.inviting * Math.sin(this.elapsed * 1.9) * 0.02;
     this.artifact.scale.setScalar(scale);
     this.world.scale.setScalar(this.frameScale);
 
@@ -1040,6 +1050,27 @@ export class VaultRenderer {
   }
 
   /**
+   * A shove from the keyboard. There is no hand speed to take a throw from, so
+   * each press contributes a fixed impulse and repeats build on one another —
+   * which is what makes the wall, and everything past it, reachable without a
+   * pointer.
+   */
+  nudge(directionX: number, directionY: number): void {
+    if (this.destroyed) return;
+    this.grabbed = false;
+    this.grabTarget.set(0, 0);
+    this.grabVelocity.set(
+      clamp(this.grabVelocity.x + directionX * 2.8, -9, 9),
+      clamp(this.grabVelocity.y + directionY * 2.8, -9, 9),
+    );
+  }
+
+  /** How strongly the object is currently asking to be touched. */
+  setInviting(amount: number): void {
+    this.inviting = clamp(amount);
+  }
+
+  /**
    * Lets go. Returns true when it was let go hard enough to break open, so the
    * caller can answer with sound and copy.
    */
@@ -1115,6 +1146,7 @@ export class VaultRenderer {
     this.split = 0;
     this.splitVelocity = 0;
     this.heat = 0;
+    this.inviting = 0;
     this.damage = 0;
     this.shatter = 0;
     this.destroyed = false;

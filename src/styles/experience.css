@@ -12,6 +12,7 @@
   --media-y: 0px;
   --charge: 0;
   --glow: 0;
+  --invite: 0;
   --frame-inset: 0%;
   position: sticky;
   top: 0;
@@ -202,8 +203,15 @@
   text-shadow: 0 0 1.4rem rgba(215, 183, 122, 0.52);
 }
 
+/* Brightens in step with the object once it starts asking to be touched. */
+.artifact-guidance {
+  opacity: calc(0.62 + var(--invite, 0) * 0.38);
+  text-shadow: 0 0 calc(var(--invite, 0) * 1.5rem) rgba(215, 183, 122, calc(var(--invite, 0) * 0.45));
+}
+
 .artifact-guidance.is-lost {
   color: var(--danger);
+  opacity: 1;
 }
 
 .artifact-guidance.is-charging {

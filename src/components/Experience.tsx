@@ -35,6 +35,17 @@ const RESONANT_CHARGE = 0.8;
 const RESONANT_RELEASES = 3;
 /** Horizontal travel that turns a hold into a rotation drag. */
 const DRAG_THRESHOLD_PX = 10;
+/** Seconds of being ignored before the object starts asking to be touched. */
+const INVITE_DELAY_SECONDS = 4;
+const INVITE_RAMP_SECONDS = 2;
+
+/** Keys that shove the object, so the physics is reachable without a pointer. */
+const NUDGE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
 const SCROLL_KEYS = new Set([
   'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ', 'Spacebar',
 ]);
@@ -157,6 +168,8 @@ export const Experience = ({
   const resonantReleasesRef = useRef(0);
   const strikesRef = useRef(0);
   const strikeTimerRef = useRef<number | null>(null);
+  const lastTouchedAtRef = useRef(0);
+  const artifactExposedRef = useRef(false);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -331,6 +344,7 @@ export const Experience = ({
     let displayProgress = displayProgressRef.current;
     let latestCue: TimelineCue = cueForProgress(displayProgress);
     let latestChapter = chapterIdForProgress(displayProgress);
+    let wasExposed = false;
     let pageVisible = !document.hidden;
 
     const measure = (): void => {
@@ -458,6 +472,20 @@ export const Experience = ({
           onDestroyed();
         }
 
+        // Left alone once it is out, the object starts inviting contact. Most
+        // visitors have no reason to suspect it can be touched at all.
+        const exposed = artifactExposedRef.current;
+        // The wait is measured from the object appearing, not from page load,
+        // or it arrives already asking and the invitation means nothing.
+        if (exposed && !wasExposed) lastTouchedAtRef.current = now;
+        wasExposed = exposed;
+        const idleSeconds = (now - lastTouchedAtRef.current) / 1000;
+        const inviting = exposed
+          ? clamp((idleSeconds - INVITE_DELAY_SECONDS) / INVITE_RAMP_SECONDS)
+          : 0;
+        rendererRef.current?.setInviting(inviting);
+        stage?.style.setProperty('--invite', inviting.toFixed(3));
+
         const integrity = rendererRef.current?.getIntegrity() ?? 1;
         telemetry.integrity = integrity;
         if (integrityRef.current) {
@@ -543,8 +571,20 @@ export const Experience = ({
   const finaleVisible = cue === 'final';
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
+  artifactExposedRef.current = artifactInteractive && !webglFailed && !destroyed;
+
+  /** Any contact restarts the clock on the object asking to be noticed. */
+  const noteContact = (): void => {
+    lastTouchedAtRef.current = performance.now();
+  };
+
+  const nudgeArtifact = (directionX: number, directionY: number): void => {
+    noteContact();
+    rendererRef.current?.nudge(directionX, directionY);
+  };
 
   const beginHold = (clientX: number, clientY: number): void => {
+    noteContact();
     holdRef.current = {
       active: true,
       dragging: false,
@@ -563,6 +603,7 @@ export const Experience = ({
   const trackHold = (clientX: number, clientY: number): void => {
     const hold = holdRef.current;
     if (!hold.active) return;
+    noteContact();
     const delta = clientX - hold.lastX;
 
     // Hand speed in normalised screen widths per second, smoothed so a single
@@ -606,6 +647,7 @@ export const Experience = ({
   const endHold = (): void => {
     const hold = holdRef.current;
     if (!hold.active) return;
+    noteContact();
     const charge = chargeRef.current;
     const wasDragging = hold.dragging;
     holdRef.current = {
@@ -748,7 +790,7 @@ export const Experience = ({
               <button
                 className={`artifact-hit-target${charging ? ' is-charging' : ''}${carrying ? ' is-carrying' : ''}`}
                 type="button"
-                aria-label="Hold the object to charge it, or drag to carry it"
+                aria-label="The object. Hold to charge it, drag to carry it, or use the arrow keys to push it against the walls of the chamber."
                 onPointerDown={(event) => {
                   event.currentTarget.setPointerCapture(event.pointerId);
                   beginHold(event.clientX, event.clientY);
@@ -758,6 +800,14 @@ export const Experience = ({
                 onPointerCancel={endHold}
                 onLostPointerCapture={endHold}
                 onKeyDown={(event) => {
+                  const nudge = NUDGE_KEYS[event.key];
+                  if (nudge) {
+                    // Held down, the repeats stack into a throw, which is the
+                    // only way to reach the wall without a pointer.
+                    event.preventDefault();
+                    nudgeArtifact(nudge[0], nudge[1]);
+                    return;
+                  }
                   if (event.key !== 'Enter' && event.key !== ' ') return;
                   event.preventDefault();
                   if (!holdRef.current.active) beginHold(0, 0);
