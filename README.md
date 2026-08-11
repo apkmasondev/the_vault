@@ -2,15 +2,17 @@
 
 A cinematic, single-page containment experience driven by scroll-scrubbed video and a lightweight procedural WebGL reveal.
 
-Scrolling a nine-screen section produces one damped number between zero and one. That number seeks two all-intra films frame by frame, hands over to a live Three.js scene at frame 239 of the second film, and drives the audio filtering. The object that emerges responds to being held, dragged and heard.
+Scrolling an eleven-screen section produces one damped number between zero and one. That number seeks two all-intra films frame by frame, hands over to a live Three.js scene at frame 239 of the second film, and drives the audio filtering. The object that emerges can be held, carried, thrown against the walls of the chamber, and broken.
 
 ## What is in it
 
 - **Scroll-scrubbed film** — two H.264 renders encoded so every frame is a keyframe, seeked rather than played, with a scheduler that caps how far each seek may jump
-- **Live WebGL reveal** — hand-written GLSL for the core, shell, particulate and haze, plus a three-pass bloom, shock-ring and grain chain built on Three's render targets rather than a post-processing library
-- **A held object** — press to charge it, release for a shockwave, drag sideways to spin it; three full-charge releases log a hidden resonance that changes the closing record
+- **Live WebGL reveal** — hand-written GLSL for the core, its molten interior, the drifting particulate, the motes and the smoke, plus a three-pass bloom, shock-ring and grain chain built on Three's render targets rather than a post-processing library
+- **An object with weight** — hold it still to charge it and release for a shockwave, or drag it and let go while your hand is still moving. It carries its momentum into the walls, sheds burning shards, and comes back hot
+- **Consequences that last** — heat fades but damage does not. Its structural integrity is on screen from the moment it appears, and at zero the object comes apart into tumbling shards for good, leaving an empty chamber and a different ending
 - **Audio-reactive geometry** — the soundtrack is analysed while it plays and its bands displace the surface
-- **An About panel** (`#about`) — explains the mechanism, diagrams the timeline as a draggable scrubber, and reads live instrumentation out of the running experience
+- **Reachable without a pointer** — the arrow keys shove the object hard enough to reach the walls, so nothing in the piece is mouse-only
+- **An About panel** (`#about`) — tells the story first and the engineering second, diagrams the timeline as a draggable scrubber, and reads live instrumentation out of the running experience
 - **Cinematic mode** — plays the whole timeline hands-free for visitors who never discover the scroll interaction; any wheel, drag or navigation key takes control back
 - **Chapter rail** — named beats that can be jumped to
 
@@ -20,8 +22,11 @@ Scrolling a nine-screen section produces one damped number between zero and one.
 - direct Three.js rendering with adaptive quality and its own post-processing chain
 - native scroll and two all-intra H.264 video layers
 - local AAC soundtrack routed through Web Audio with reactive filtering and live spectrum analysis
-- Vitest and ESLint
+- Vitest for the pure logic, and jsdom with Testing Library for the entry gate and the About dialog
+- ESLint, with no warnings tolerated
 - GitHub Actions deployment to GitHub Pages
+
+Three runtime dependencies: React, React DOM and Three.js. Nothing is loaded from a third party at runtime — no fonts, analytics, trackers or remote media.
 
 ## Local development
 

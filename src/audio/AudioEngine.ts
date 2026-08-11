@@ -39,7 +39,7 @@ export class AudioEngine {
     this.setEnabled(enabled);
   }
 
-  setEnabled(enabled: boolean): void {
+  private setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!this.context || !this.master) return;
     const now = this.context.currentTime;
