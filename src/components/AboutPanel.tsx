@@ -51,10 +51,24 @@ const ClassifiedField = ({ label, value, mask }: ClassifiedFieldProps) => {
         onClick={() => setRevealed((current) => !current)}
       >
         <span aria-hidden="true">{revealed ? value : mask}</span>
+        {revealed && <span className="classified-field__access" aria-hidden="true">ACCESS LOGGED</span>}
       </button>
     </div>
   );
 };
+
+interface ArchiveReadoutProps {
+  readonly label: string;
+  readonly value: string;
+  readonly alert?: boolean;
+}
+
+const ArchiveReadout = ({ label, value, alert = false }: ArchiveReadoutProps) => (
+  <div className="classified-field classified-field--static">
+    <span className="classified-field__label">{label}</span>
+    <span className={`classified-field__reading${alert ? ' is-alert' : ''}`}>{value}</span>
+  </div>
+);
 
 /**
  * The exhibit label for the whole piece. It explains the mechanism, and then
@@ -183,6 +197,16 @@ export const AboutPanel = ({
         </figure>
 
         <aside className="about__classified" aria-label="Restricted archive fields">
+          <img
+            className="about__classified-art"
+            src={asset(MEDIA.radioactiveOrb)}
+            alt=""
+            width="960"
+            height="512"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+          />
           <ClassifiedField
             label="Recovery site"
             value="NORTH ANNEX // SUBLEVEL 07"
@@ -193,6 +217,8 @@ export const AboutPanel = ({
             value="IRON SLEEP // NO EXPIRY"
             mask="██████████████"
           />
+          <ArchiveReadout label="Hazard class" value="RADIOLOGICAL / UNKNOWN" alert />
+          <ArchiveReadout label="Signal state" value="DORMANT / INTERMITTENT" />
         </aside>
 
         {live && (

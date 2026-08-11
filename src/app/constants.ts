@@ -77,6 +77,7 @@ export const MEDIA = {
   opening540: 'media/vault-opening-540-gop1.mp4',
   poster: 'media/vault-poster.webp',
   transition: 'media/vault-opening-transition.webp',
+  radioactiveOrb: 'media/about-radioactive-orb.webp',
   soundtrack: 'media/vault-corroded-silence.m4a',
 } as const;
 

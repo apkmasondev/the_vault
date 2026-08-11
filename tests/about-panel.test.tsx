@@ -96,8 +96,16 @@ describe('AboutPanel', () => {
     fireEvent.click(field);
     expect(field.getAttribute('aria-expanded')).toBe('true');
     expect(field.getAttribute('aria-label')).toContain('NORTH ANNEX // SUBLEVEL 07');
+    expect(screen.getByText('ACCESS LOGGED')).toBeTruthy();
 
     fireEvent.click(field);
     expect(field.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('ACCESS LOGGED')).toBeNull();
+  });
+
+  it('shows the fixed hazard and signal readouts', () => {
+    panel();
+    expect(screen.getByText('RADIOLOGICAL / UNKNOWN')).toBeTruthy();
+    expect(screen.getByText('DORMANT / INTERMITTENT')).toBeTruthy();
   });
 });
