@@ -773,22 +773,21 @@
   letter-spacing: 0.08em;
 }
 
+/*
+ * Sized by the fields rather than by a fixed column count. Dividing rules drawn
+ * between siblings cannot see where a row ends, so every field added to the
+ * record left an orphaned rule at the start of the wrapped line; the columns now
+ * reflow on their own and the space between them does the separating.
+ */
 .finale__record {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1.4rem 1.5rem;
   width: min(46rem, 100%);
   margin: 2rem 0 0;
-  padding: 1.15rem 0;
+  padding: 1.35rem 0;
   border-top: 1px solid rgba(232, 228, 219, 0.12);
   border-bottom: 1px solid rgba(232, 228, 219, 0.12);
-}
-
-.finale__record div {
-  padding: 0.25rem 1rem;
-}
-
-.finale__record div + div {
-  border-left: 1px solid rgba(232, 228, 219, 0.1);
 }
 
 .finale__record dt,
@@ -1108,18 +1107,23 @@
   font-style: normal;
 }
 
+/*
+ * The rules are drawn by each cell rather than by colouring the container
+ * behind a one-pixel gap. A grid whose last row is not full leaves empty
+ * tracks, and a coloured container shows through them as a solid block; a ring
+ * on each cell draws only where there is something to outline. The rings of
+ * neighbouring cells meet inside the gap and read as a single line.
+ */
 .about__readouts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 1px;
   margin: 1.2rem 0 0;
-  background: var(--line);
-  border: 1px solid var(--line);
 }
 
 .about__readouts div {
   padding: 0.7rem 0.85rem;
-  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .about__readouts dt,
@@ -1481,24 +1485,8 @@
   }
 
   .finale__record {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .finale__record div {
-    padding: 0.55rem 0.45rem;
-  }
-
-  /* With two columns the vertical rules must follow the rows, not the source order. */
-  .finale__record div + div {
-    border-left: 0;
-  }
-
-  .finale__record div:nth-child(2n) {
-    border-left: 1px solid rgba(232, 228, 219, 0.1);
-  }
-
-  .finale__record div:nth-child(n + 3) {
-    border-top: 1px solid rgba(232, 228, 219, 0.1);
+    grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+    gap: 1.1rem 1rem;
   }
 
   .finale__record dd {
