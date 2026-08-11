@@ -49,8 +49,10 @@ export default defineConfig(() => {
       chunkSizeWarningLimit: 600,
     },
     test: {
+      // Node by default so the pure logic stays fast; the component tests opt
+      // into jsdom individually with a `@vitest-environment` docblock.
       environment: 'node',
-      include: ['tests/**/*.test.ts'],
+      include: ['tests/**/*.test.{ts,tsx}'],
     },
   };
 });

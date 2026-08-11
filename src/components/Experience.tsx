@@ -9,6 +9,7 @@ import {
 } from '../app/constants';
 import type { AudioBands } from '../audio/AudioEngine';
 import type { Telemetry } from '../app/telemetry';
+import { HoldGesture } from '../interaction/holdGesture';
 import { ScrollDirector } from '../media/ScrollDirector';
 import { VideoScrubber } from '../media/VideoScrubber';
 import { selectVideoSources } from '../media/videoSources';
@@ -33,8 +34,6 @@ const CHARGE_SECONDS = 1.5;
 /** A release at or above this counts toward the hidden resonance. */
 const RESONANT_CHARGE = 0.8;
 const RESONANT_RELEASES = 3;
-/** Horizontal travel that turns a hold into a rotation drag. */
-const DRAG_THRESHOLD_PX = 10;
 /** Point in the sequence at which the opening film starts downloading. */
 const OPENING_FILM_PREFETCH = 0.2;
 /** Seconds of being ignored before the object starts asking to be touched. */
@@ -163,10 +162,7 @@ export const Experience = ({
   const cinematicRef = useRef(false);
   const contactsRef = useRef(0);
   const chargeRef = useRef(0);
-  const holdRef = useRef({
-    active: false, dragging: false, startX: 0, startY: 0,
-    lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
-  });
+  const gestureRef = useRef(new HoldGesture());
   const resonantReleasesRef = useRef(0);
   const strikesRef = useRef(0);
   const strikeTimerRef = useRef<number | null>(null);
@@ -448,11 +444,13 @@ export const Experience = ({
         pointer.x = damp(pointer.x, pointer.targetX, 0.12, deltaSeconds);
         pointer.y = damp(pointer.y, pointer.targetY, 0.12, deltaSeconds);
 
-        const hold = holdRef.current;
-        chargeRef.current = hold.active && !hold.dragging
+        // Charge builds only while the object is held still; moving it is a
+        // different intent and gives the charge back.
+        const holdingStill = gestureRef.current.active && !gestureRef.current.isDragging;
+        chargeRef.current = holdingStill
           ? Math.min(1, chargeRef.current + deltaSeconds / CHARGE_SECONDS)
           : Math.max(0, chargeRef.current - deltaSeconds * 3);
-        if (hold.active && !hold.dragging) onChargeChange(chargeRef.current);
+        if (holdingStill) onChargeChange(chargeRef.current);
 
         const stage = stageRef.current;
         stage?.style.setProperty('--media-x', `${pointer.x * 3}px`);
@@ -604,55 +602,36 @@ export const Experience = ({
 
   const beginHold = (clientX: number, clientY: number): void => {
     noteContact();
-    holdRef.current = {
-      active: true,
-      dragging: false,
-      startX: clientX,
-      startY: clientY,
-      lastX: clientX,
-      lastY: clientY,
-      lastAt: performance.now(),
-      throwX: 0,
-      throwY: 0,
-    };
+    gestureRef.current.begin(clientX, clientY, performance.now());
     setCharging(true);
     onChargeStart();
   };
 
   const trackHold = (clientX: number, clientY: number): void => {
-    const hold = holdRef.current;
-    if (!hold.active) return;
+    const gesture = gestureRef.current;
+    if (!gesture.active) return;
     noteContact();
-    const delta = clientX - hold.lastX;
 
-    // Hand speed in normalised screen widths per second, smoothed so a single
-    // jittery sample cannot register as a throw. This, rather than where the
-    // object ended up, is what a throw is made of.
-    const now = performance.now();
-    const elapsed = Math.min(0.12, Math.max(0.008, (now - hold.lastAt) / 1000));
-    hold.throwX = hold.throwX * 0.45 + ((clientX - hold.lastX) / window.innerWidth) * 2 / elapsed * 0.55;
-    hold.throwY = hold.throwY * 0.45 + ((clientY - hold.lastY) / window.innerHeight) * 2 / elapsed * 0.55;
-    hold.lastX = clientX;
-    hold.lastY = clientY;
-    hold.lastAt = now;
+    const { dragging, becameDrag, deltaX } = gesture.move(clientX, clientY, performance.now(), {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
 
-    const travelled = Math.hypot(clientX - hold.startX, clientY - hold.startY);
-    if (!hold.dragging && travelled > DRAG_THRESHOLD_PX) {
+    if (becameDrag) {
       // Moving is a different gesture from holding, so the charge is given back.
-      hold.dragging = true;
       chargeRef.current = 0;
       setCharging(false);
       setCarrying(true);
       onChargeRelease(0);
     }
-    if (!hold.dragging) return;
+    if (!dragging) return;
     // The object is carried to the pointer, and spun by the sideways component.
     rendererRef.current?.setGrab(
       true,
       (clientX / window.innerWidth) * 2 - 1,
       (clientY / window.innerHeight) * 2 - 1,
     );
-    rendererRef.current?.addSpin((delta / window.innerWidth) * 9);
+    rendererRef.current?.addSpin((deltaX / window.innerWidth) * 9);
   };
 
   const noteFracture = (): void => {
@@ -664,20 +643,16 @@ export const Experience = ({
   };
 
   const endHold = (): void => {
-    const hold = holdRef.current;
-    if (!hold.active) return;
+    const gesture = gestureRef.current;
+    if (!gesture.active) return;
     noteContact();
     const charge = chargeRef.current;
-    const wasDragging = hold.dragging;
-    holdRef.current = {
-      active: false, dragging: false, startX: 0, startY: 0,
-      lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
-    };
+    const { dragging: wasDragging, throwX, throwY } = gesture.end();
     setCharging(false);
     setCarrying(false);
     chargeRef.current = 0;
     // Letting go hard enough breaks it open rather than simply setting it down.
-    if (rendererRef.current?.releaseGrab(hold.throwX, hold.throwY)) noteFracture();
+    if (rendererRef.current?.releaseGrab(throwX, throwY)) noteFracture();
     onChargeRelease(wasDragging ? 0 : charge);
     if (wasDragging || !rendererRef.current?.release(charge)) return;
 
@@ -705,10 +680,7 @@ export const Experience = ({
     strikesRef.current = 0;
     setStruck(false);
     setDestroyed(false);
-    holdRef.current = {
-      active: false, dragging: false, startX: 0, startY: 0,
-      lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
-    };
+    gestureRef.current.end();
     rendererRef.current?.setGrab(false);
     setArtifactResponding(false);
     setCarrying(false);
@@ -829,7 +801,7 @@ export const Experience = ({
                   }
                   if (event.key !== 'Enter' && event.key !== ' ') return;
                   event.preventDefault();
-                  if (!holdRef.current.active) beginHold(0, 0);
+                  if (!gestureRef.current.active) beginHold(0, 0);
                 }}
                 onKeyUp={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return;
