@@ -39,7 +39,7 @@ export const Finale = (props: FinaleProps) => {
         </div>
         <div><dt>CONTACTS</dt><dd>{String(contacts).padStart(2, '0')}</dd></div>
         <div><dt>IMPACTS</dt><dd>{String(strikes).padStart(2, '0')}</dd></div>
-        <div>
+        <div className="finale__record-event">
           <dt>EVENT</dt>
           <dd>{destroyed ? 'SPECIMEN LOST' : resonant ? 'RESONANCE LOGGED' : 'BREACH RECORDED'}</dd>
         </div>

@@ -810,6 +810,12 @@
   letter-spacing: 0.12em;
 }
 
+.finale__record-event {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(12rem, 100%);
+}
+
 .finale__note {
   max-width: 32rem;
   margin: 1.4rem 0 0 !important;

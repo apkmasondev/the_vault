@@ -539,7 +539,7 @@ export const Experience = ({
               longer hidden by the stylesheet, and the gate's backdrop is close
               to clear at its centre. Keyed on the cue so each beat remounts and
               replays its entrance instead of the text swapping in place. */}
-          {authorized && (
+          {authorized && (hasScrolled || cue !== 'idle') && (
             <>
               <div className="narrative" key={`${cue}-${destroyed}`} aria-hidden="true">
                 <p className="narrative__primary">{primary}</p>

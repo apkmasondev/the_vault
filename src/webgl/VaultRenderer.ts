@@ -758,7 +758,8 @@ export class VaultRenderer {
    * geometry shares vertices between faces and cannot be separated at all.
    */
   private createShardableGeometry(radius: number, detail: number): THREE.BufferGeometry {
-    const geometry = new THREE.IcosahedronGeometry(radius, detail).toNonIndexed();
+    // IcosahedronGeometry is already non-indexed in the current Three.js build.
+    const geometry = new THREE.IcosahedronGeometry(radius, detail);
     const positions = geometry.getAttribute('position');
     const faces = positions.count / 3;
     const centroids = new Float32Array(positions.count * 3);
