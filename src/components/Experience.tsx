@@ -60,7 +60,10 @@ interface ExperienceProps {
 }
 
 const cueCopy: Record<TimelineCue, readonly [string, string?]> = {
-  idle: ['', undefined],
+  // The sequence opens on a closed door and nothing moves for the first few
+  // percent. Under the hands-off run that is three silent seconds in which a
+  // visitor has every reason to think nothing is happening.
+  idle: ['SEAL INTACT', 'THE DOOR HAS NOT MOVED IN DECADES'],
   sequence: ['MECHANICAL LOCK', 'SEQUENCE ACTIVE'],
   disengaged: ['LOCK STATUS', 'DISENGAGED'],
   released: ['CONTAINMENT RELEASED', undefined],
@@ -532,17 +535,23 @@ export const Experience = ({
             </div>
           )}
 
-          {/* Keyed on the cue so each beat remounts and replays its entrance
-              instead of the text swapping in place. */}
-          <div className="narrative" key={`${cue}-${destroyed}`} aria-hidden="true">
-            <p className="narrative__primary">{primary}</p>
-            {secondary && <p className="narrative__secondary">{secondary}</p>}
-          </div>
-          {/* One quiet announcement per beat, kept out of the visual layer so it
-              cannot be hidden mid-utterance by the finale. */}
-          <p className="visually-hidden" aria-live="polite">
-            {primary}{secondary ? `. ${secondary}` : ''}
-          </p>
+          {/* Held back until the gate is out of the way: the opening beat is no
+              longer hidden by the stylesheet, and the gate's backdrop is close
+              to clear at its centre. Keyed on the cue so each beat remounts and
+              replays its entrance instead of the text swapping in place. */}
+          {authorized && (
+            <>
+              <div className="narrative" key={`${cue}-${destroyed}`} aria-hidden="true">
+                <p className="narrative__primary">{primary}</p>
+                {secondary && <p className="narrative__secondary">{secondary}</p>}
+              </div>
+              {/* One quiet announcement per beat, kept out of the visual layer
+                  so it cannot be hidden mid-utterance by the finale. */}
+              <p className="visually-hidden" aria-live="polite">
+                {primary}{secondary ? `. ${secondary}` : ''}
+              </p>
+            </>
+          )}
 
           {finaleVisible && (
             <Finale

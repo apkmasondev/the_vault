@@ -21,7 +21,17 @@
 html {
   margin: 0;
   background: var(--bg);
-  scrollbar-color: rgba(215, 183, 122, 0.35) var(--bg);
+  /*
+   * The scroll position is the sequence, and the HUD already reads it out to
+   * the hundredth. A bar tracking it as well only advertises how long the page
+   * is and breaks the frame. The About panel keeps its own, being a reading
+   * surface where the bar earns its place.
+   */
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
 }
 
 body {

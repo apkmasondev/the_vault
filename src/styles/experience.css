@@ -666,7 +666,8 @@
   letter-spacing: 0.18em;
 }
 
-.cue-idle .narrative,
+/* The opening beat is deliberately not hidden: it is what tells a visitor the
+   sequence has started before the door begins to move. */
 .cue-opening .narrative,
 .cue-final .narrative {
   opacity: 0;
