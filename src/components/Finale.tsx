@@ -51,9 +51,21 @@ export const Finale = (props: FinaleProps) => {
         </p>
       )}
       <div className="finale__actions">
-        <button type="button" className="outline-button" onClick={onReplay}>REPLAY SEQUENCE</button>
-        <button type="button" className="outline-button" onClick={onAbout}>HOW THIS WORKS</button>
-        <a href="https://apkmason.dev" target="_blank" rel="noreferrer">VISIT APKMASON.DEV</a>
+        <button type="button" className="archive-action archive-action--primary" onClick={onReplay}>
+          <span className="archive-action__index" aria-hidden="true">01 // RESET</span>
+          <span className="archive-action__label">REPLAY SEQUENCE</span>
+          <span className="archive-action__mark" aria-hidden="true">↺</span>
+        </button>
+        <button type="button" className="archive-action" onClick={onAbout}>
+          <span className="archive-action__index" aria-hidden="true">02 // DOSSIER</span>
+          <span className="archive-action__label">OPEN CASE FILE</span>
+          <span className="archive-action__mark" aria-hidden="true">→</span>
+        </button>
+        <a className="archive-link" href="https://apkmason.dev" target="_blank" rel="noreferrer">
+          <span className="archive-link__index" aria-hidden="true">EXTERNAL //</span>
+          <span>APKMASON.DEV</span>
+          <span aria-hidden="true">↗</span>
+        </a>
       </div>
     </div>
   );

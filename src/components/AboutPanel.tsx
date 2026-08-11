@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { VIDEO_FPS } from '../app/constants';
+import { asset, MEDIA, VIDEO_FPS } from '../app/constants';
 import type { TelemetryReader } from '../app/telemetry';
 import { SequenceMap } from './SequenceMap';
 
@@ -140,18 +140,34 @@ export const AboutPanel = ({
           </p>
         </section>
 
+        <figure className="about__plate">
+          <img
+            src={asset(MEDIA.poster)}
+            alt="The sealed industrial vault before the containment sequence begins."
+            width="1280"
+            height="720"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+          />
+          <figcaption>
+            <span>ARCHIVE FRAME 01</span>
+            SEAL INTACT
+          </figcaption>
+        </figure>
+
         {live && (
           <section className="about__section">
             <h3>Finding your way around</h3>
             <ul className="about__guide">
-              <li><span>Scroll</span>Everything is tied to how far down the page you are. Scroll back and the door closes again.</li>
+              <li><span>Scroll</span>The entire sequence follows your position on the page. Scroll back and the door closes again.</li>
               <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
               <li><span>Drag</span>Pull it and it comes with you, with weight behind it.</li>
-              <li><span>Throw</span>Let go while your hand is still moving. It carries on, hits the wall of the chamber, sheds burning shards and comes back hot.</li>
-              <li><span>Break it</span>Damage is permanent — watch the integrity figure. Keep throwing it and eventually there will be nothing left, and the piece will end differently.</li>
-            <li><span>Throw</span>Let go while it is still moving fast and it comes apart, and you get a moment of what is inside before it closes itself.</li>
+              <li><span>Throw</span>Release it while your hand is moving. It keeps that momentum, strikes the chamber wall and returns hot.</li>
+              <li><span>Fracture</span>A hard enough impact briefly parts the shell and exposes what is inside.</li>
+              <li><span>Destroy</span>Damage is permanent. Repeated strikes reduce integrity to zero and change the final record.</li>
               <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
-              <li><span>Play it for me</span>Hands off, if you would rather just watch. Any scroll takes control back.</li>
+              <li><span>Play it for me</span>Use the automatic sequence if you would rather watch. Any scroll takes control back.</li>
             </ul>
           </section>
         )}
@@ -159,94 +175,121 @@ export const AboutPanel = ({
         <section className="about__section about__section--divider">
           <h3>How it is made</h3>
           <p>
-            The rest of this is for anyone who wants to look behind it. There is no video player
-            and no animation library in here: the page holds one number between zero and one, and
-            everything you have just seen is derived from it.
+            The rest is for anyone who wants to look behind the seal. The films are never played
+            conventionally and there is no animation library: the page holds one number between
+            zero and one, and everything you have seen is derived from it.
           </p>
         </section>
 
         <section className="about__section">
           <h3>The sequence</h3>
           <p>
-            Your scroll position through a nine-screen section is normalised to that number and
+            Your position through the scroll sequence is normalised to that number and
             exponentially damped, so the image keeps moving smoothly after your finger stops.
             {live ? ' Drag the map to scrub the sequence running behind this panel.' : ''}
           </p>
           {live && <SequenceMap readTelemetry={readTelemetry} onSeek={onSeek} />}
         </section>
 
+        <figure className="about__plate about__plate--open">
+          <img
+            src={asset(MEDIA.transition)}
+            alt="The open vault at the point where the live rendered scene takes over."
+            width="1280"
+            height="720"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+          />
+          <figcaption>
+            <span>ARCHIVE FRAME 02</span>
+            APERTURE OPEN
+          </figcaption>
+        </figure>
+
         <section className="about__section">
           <h3>Film, then geometry</h3>
           <p>
-            The two films are never played. They are re-encoded so that every single frame is a
-            keyframe, which is far larger on disk but makes any frame reachable instantly — the
-            page seeks them like a filmstrip, forwards and backwards, at whatever speed you scroll.
-            A seek scheduler limits how far each request may jump so the decoder is never asked for
-            more than it can present.
+            Every frame in both films is independently reachable, so the page can seek through
+            them like a filmstrip — forwards or backwards, at the speed of your scroll. A scheduler
+            keeps those requests within what the decoder can present smoothly.
           </p>
           <p>
-            At frame 239 of the second film the footage freezes and a Three.js scene takes over the
-            same point on screen. Everything after that — the object, its fissures, the drifting
-            particulate, the haze — is generated live, which is why it can react to you at all.
-          </p>
-          <p>
-            That scene is then run through three extra passes: the hot parts of the frame are
-            isolated and blurred into a bloom, a shock ring warps the image outward on impact, and
-            colour separates toward the corners under a light film grain. All of it keeps its
-            transparency, so the glow still falls across the footage underneath.
-          </p>
-          <p>
-            The film's own smoke freezes at that frame along with everything else in it, so the
-            live scene picks the motion up: two sheets of smoke, one behind the object and one
-            drifting in front, drawn by warping a noise field with itself. That self-warping is the
-            difference between smoke that curls and a texture that slides.
+            At the final matched frame of the second film, a live Three.js scene takes over the same
+            point on screen. The object, its fissures, smoke, particulate and light are generated in
+            real time, which is why the chamber can react to you.
           </p>
         </section>
 
         <section className="about__section">
-          <h3>Why the object feels like an object</h3>
+          <h3>Why it feels physical</h3>
           <p>
-            Its body is nearly black. The light you see is escaping along a narrow band where a
-            noise field crosses a threshold, which is what makes those read as cracks rather than
-            patches, and that band widens as charge builds. Holding it speeds the churn underneath
-            and drives a tone that climbs with the stored energy.
+            Your pointer does not carry the object directly. It pulls a damped spring, giving the
+            body weight while preserving momentum after release. Throws take their speed from your
+            hand; impacts return heat, shards and camera movement to the chamber.
           </p>
           <p>
-            Carrying it runs on a spring rather than on the pointer directly: stiff and damped
-            while you hold it so it tracks your hand, slack once you let go so its momentum
-            survives. The faster you haul it, the more it draws out along the direction of travel
-            and pinches across it, the way a heavy drop behaves.
-          </p>
-          <p>
-            The chamber has walls and the object bounces off them. A throw takes its speed from
-            your hand rather than from where the object had got to, because dragging it into a wall
-            pins it there with nothing left to give. Every strike knocks shards loose, drives heat
-            into the stone — the cracks run from gold up towards forge red, then cool over a few
-            seconds — and shakes the camera. Thrown hard enough, the shell parts along the line of
-            the throw, light escapes the seam, and a stiff spring pulls the break shut again in
-            about a third of a second.
-          </p>
-          <p>
-            Heat fades. Damage does not. Each strike takes a permanent bite out of the object's
-            integrity, which is why that figure sits in the corner of the screen from the moment it
-            is exposed — a consequence you cannot see coming is indistinguishable from a bug. As it
-            falls, a second and coarser network of breaks opens over the fine veining, and the
-            object stops cooling fully between blows.
-          </p>
-          <p>
-            At zero it does not survive. The core is built as separate triangles rather than as a
-            shared mesh, each one carrying its own centroid, tumbling axis and bearing, so it can
-            actually come apart: every face is flung outward on its own heading, spinning about its
-            own axis and falling as it goes, while the interior is exposed, flares, and burns out
-            with them. Indexed geometry shares its vertices between faces and cannot be separated
-            at all. The chamber is then empty for the rest of the sequence, the closing record says
-            so, and the only way back is to run it again.
-          </p>
-          <p>
-            While the soundtrack plays it is analysed live, and its low band displaces the surface —
-            the object is breathing in time with what you are hearing.
+            Holding builds charge and widens the light escaping through the shell. Heat fades, but
+            structural damage remains. If integrity reaches zero, the geometry separates into its
+            individual faces and the final archive records what happened.
           </p>
         </section>
+
+        <details className="about__details">
+          <summary>
+            <span>TECHNICAL DOSSIER</span>
+            <strong>OPEN ENGINEERING NOTES</strong>
+          </summary>
+          <div className="about__details-body">
+            <section>
+              <h4>Frame pipeline</h4>
+              <p>
+                Both films are encoded with every frame as a keyframe. That costs more disk space,
+                but makes arbitrary frames reachable immediately. The transition keeps the outgoing
+                film opaque underneath the incoming frame, so no poster or empty layer can flash
+                through the blend.
+              </p>
+              <p>
+                The live scene adds selective bloom, an impact distortion, restrained colour
+                separation and film grain. Two procedural smoke sheets bridge the frozen footage:
+                one behind the object and one drifting in front.
+              </p>
+            </section>
+            <section>
+              <h4>Interaction model</h4>
+              <p>
+                A stiff spring tracks the hand while held; a softer one preserves velocity after
+                release. Surface cracks widen with charge, strikes add permanent damage, and the
+                soundtrack's low band displaces the mesh in real time.
+              </p>
+              <p>
+                The destructible core uses separate triangles, each with its own centre, axis and
+                heading. At zero integrity those faces can travel, spin and fall independently
+                instead of stretching a shared mesh.
+              </p>
+            </section>
+            <section>
+              <h4>Device strategy</h4>
+              <p>
+                Quality is selected from device memory, core count, pointer type and the Save-Data
+                hint, then reduced if frame times slip. Phones receive smaller films and a lighter
+                scene. Missing WebGL, failed media and reduced-motion preferences each have a
+                dedicated fallback.
+              </p>
+            </section>
+            <section>
+              <h4>Stack</h4>
+              <ul className="about__stack">
+                <li><span>Build</span>Vite 8 · TypeScript strict · ESLint · Vitest</li>
+                <li><span>Interface</span>React 19, no UI framework</li>
+                <li><span>Render</span>Three.js, hand-written GLSL, no post-processing library</li>
+                <li><span>Audio</span>Web Audio: one AAC file, live analysis, synthesised impacts</li>
+                <li><span>Delivery</span>GitHub Actions to GitHub Pages</li>
+                <li><span>Remote services</span>None — no external fonts, analytics, trackers or remote media</li>
+              </ul>
+            </section>
+          </div>
+        </details>
 
         {live && (
           <section className="about__section">
@@ -269,30 +312,6 @@ export const AboutPanel = ({
             </dl>
           </section>
         )}
-
-        <section className="about__section">
-          <h3>Built to survive the device it lands on</h3>
-          <p>
-            Render quality is picked from device memory, core count, pointer type and the Save-Data
-            hint, then dropped a tier automatically if frame times slip — the bloom chain is the
-            first thing to go, since it costs the most for the least. A phone gets smaller films and
-            a lighter scene. If WebGL is missing the object falls back to a CSS rendering, if a film
-            fails a still frame covers the gap, and if the visitor prefers reduced motion the whole
-            sequence becomes a click-through with no movement at all.
-          </p>
-        </section>
-
-        <section className="about__section">
-          <h3>Stack</h3>
-          <ul className="about__stack">
-            <li><span>Build</span>Vite 8 · TypeScript strict · ESLint · Vitest</li>
-            <li><span>Interface</span>React 19, no UI framework</li>
-            <li><span>Render</span>Three.js, hand-written GLSL, no post-processing library</li>
-            <li><span>Audio</span>Web Audio: one AAC file, live analysis, synthesised impacts</li>
-            <li><span>Delivery</span>GitHub Actions to GitHub Pages</li>
-            <li><span>Third parties</span>none — no fonts, analytics, trackers or remote media</li>
-          </ul>
-        </section>
 
         <section className="about__section">
           <h3>Who made this</h3>

@@ -317,7 +317,13 @@ export const Experience = ({
         const crossfade = video2ReadyRef.current || video2FailedRef.current
           ? smoothstep(RAMPS.crossfadeStart, RAMPS.crossfadeEnd, displayProgress)
           : 0;
-        if (first) first.style.opacity = String(1 - crossfade);
+        /*
+         * Keep the outgoing film opaque underneath the incoming one. Fading
+         * both layers at once makes their combined alpha dip to 75% halfway
+         * through the blend, which exposes the differently framed poster
+         * below as a brief flash. The upper layer alone supplies the blend.
+         */
+        if (first) first.style.opacity = '1';
         if (second) second.style.opacity = String(video2ReadyRef.current ? crossfade : 0);
         if (transitionRef.current) {
           transitionRef.current.style.opacity = String(video2FailedRef.current ? crossfade : 0);
