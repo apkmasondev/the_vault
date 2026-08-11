@@ -14,6 +14,8 @@ export interface QualityProfile {
   readonly motes: number;
   /** Warped-noise smoke is the most expensive thing per pixel in the scene. */
   readonly smoke: boolean;
+  /** Shards per burst when the object is thrown against a wall. */
+  readonly debris: number;
   readonly geometryDetail: number;
   /** The bloom chain is the first thing dropped on a struggling device. */
   readonly postProcessing: boolean;
@@ -31,6 +33,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       stars: 440,
       motes: 68,
       smoke: true,
+      debris: 150,
       geometryDetail: 4,
       postProcessing: true,
     };
@@ -44,6 +47,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
       stars: 270,
       motes: 44,
       smoke: true,
+      debris: 96,
       geometryDetail: 3,
       postProcessing: true,
     };
@@ -56,6 +60,7 @@ const profileFor = (tier: QualityTier): QualityProfile => {
     stars: 140,
     motes: 22,
     smoke: false,
+    debris: 54,
     geometryDetail: 2,
     postProcessing: false,
   };

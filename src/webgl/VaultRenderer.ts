@@ -85,6 +85,7 @@ const coreFragmentShader = /* glsl */ `
   uniform float uPulse;
   uniform float uFailure;
   uniform float uCharge;
+  uniform float uHeat;
   uniform vec3 uAudio;
   uniform vec3 uPointer;
   varying vec3 vNormal;
@@ -112,18 +113,19 @@ const coreFragmentShader = /* glsl */ `
     float facing = max(dot(normal, normalize(uPointer)), 0.0);
     vec3 obsidian = vec3(0.026, 0.022, 0.019);
     vec3 oldGold = vec3(0.62, 0.40, 0.18);
-    vec3 heat = vec3(0.96, 0.74, 0.42);
+    // Struck repeatedly, the cracks run from gold up towards forge red.
+    vec3 heat = mix(vec3(0.96, 0.74, 0.42), vec3(1.0, 0.34, 0.13), uHeat * 0.85);
 
     // A dark body first, then a rim, then the light coming out of the cracks.
     vec3 color = obsidian * occlusion;
     color += oldGold * fresnel * 0.46;
     // A hard glint keeps it reading as polished stone rather than matte clay.
     color += vec3(1.0, 0.88, 0.66) * pow(facingView, 22.0) * 0.09;
-    color += heat * ember * (0.05 + uCharge * 0.1) * occlusion;
-    color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85);
+    color += heat * ember * (0.05 + uCharge * 0.1 + uHeat * 0.5) * occlusion;
+    color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85 + uHeat * 1.15);
     // The side under the pointer runs hotter, so the object tracks your hand.
     color += heat * facing * vein * uCharge * 0.35;
-    color += heat * (uFailure * fresnel * 0.14 + uAudio.z * fresnel * 0.2);
+    color += heat * (uFailure * fresnel * 0.14 + uAudio.z * fresnel * 0.2 + uHeat * fresnel * 0.3);
 
     float alpha = uReveal * (0.9 + fresnel * 0.1);
     gl_FragColor = vec4(color, alpha);
@@ -197,6 +199,61 @@ const moteFragmentShader = /* glsl */ `
     float body = pow(1.0 - d, 1.7);
     float rim = smoothstep(0.92, 0.66, d) * 0.3;
     gl_FragColor = vec4(vec3(0.88, 0.76, 0.57), (body * 0.6 + rim) * vAlpha);
+  }
+`;
+
+/**
+ * Shards knocked loose when the object strikes a wall. One burst per pool: the
+ * whole pool shares an origin and a launch time, and each point derives its own
+ * direction from seeds baked into its attribute, so firing a burst costs a
+ * handful of uniform writes rather than a buffer rewrite.
+ */
+const debrisVertexShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uBurstTime;
+  uniform float uStrength;
+  uniform float uPixelScale;
+  uniform vec3 uOrigin;
+  uniform vec3 uNormal;
+  varying float vAlpha;
+  varying float vHeat;
+
+  void main() {
+    float age = uTime - uBurstTime;
+    float life = 0.8 + fract(position.z * 7.31) * 0.9;
+    if (age < 0.0 || age > life || uStrength <= 0.0) {
+      // Park spent shards outside the frustum rather than drawing them.
+      gl_Position = vec4(3.0, 3.0, 3.0, 1.0);
+      vAlpha = 0.0;
+      vHeat = 0.0;
+      return;
+    }
+
+    // Scattered around the wall normal, but biased along it.
+    vec3 direction = normalize(uNormal * 1.3 + normalize(position));
+    float speed = (1.0 + fract(position.x * 13.17) * 2.3) * uStrength;
+
+    vec3 p = uOrigin + direction * speed * age;
+    p.y -= 1.9 * age * age;
+
+    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+    float fade = 1.0 - age / life;
+    gl_PointSize = (1.3 + fract(position.y * 19.7) * 2.5) * (30.0 / -mvPosition.z) * uPixelScale * fade;
+    vAlpha = fade * fade;
+    vHeat = clamp(1.0 - age * 1.7, 0.0, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const debrisFragmentShader = /* glsl */ `
+  varying float vAlpha;
+  varying float vHeat;
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    // Cooling as they fall: white hot, then gold, then dead stone.
+    vec3 colour = mix(vec3(0.5, 0.33, 0.2), vec3(1.0, 0.88, 0.62), vHeat);
+    gl_FragColor = vec4(colour, (1.0 - d * d) * vAlpha);
   }
 `;
 
@@ -344,8 +401,11 @@ const fogFragmentShader = /* glsl */ `
   }
 `;
 
-/** Release speed, in world units per second, that breaks the object open. */
-const THROW_SPEED = 4.2;
+/**
+ * Release speed, in world units per second, that breaks the object open. Well
+ * above what it takes to strike a wall, so breaking it stays rare.
+ */
+const THROW_SPEED = 8.5;
 
 export interface RendererDiagnostics {
   readonly tier: QualityTier;
@@ -392,6 +452,11 @@ export class VaultRenderer {
   private frameScale = 1;
   private split = 0;
   private splitVelocity = 0;
+  private heat = 0;
+  private pendingImpact = 0;
+  private debrisCursor = 0;
+  private readonly debrisPools: THREE.ShaderMaterial[] = [];
+  private readonly boundsLocal = new THREE.Vector2(1.7, 1.15);
   private readonly frameTimes = new Float32Array(180);
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
@@ -451,6 +516,7 @@ export class VaultRenderer {
         uStretch: { value: new THREE.Vector3() },
         uSplitAxis: { value: new THREE.Vector3(1, 0, 0) },
         uSplit: { value: 0 },
+        uHeat: { value: 0 },
       },
       vertexShader: coreVertexShader,
       fragmentShader: coreFragmentShader,
@@ -553,6 +619,34 @@ export class VaultRenderer {
     particles.position.z = -0.2;
     this.world.add(particles);
 
+    // Two pools, so a second strike does not cut the first burst short.
+    for (let pool = 0; pool < 2; pool += 1) {
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uBurstTime: { value: -100 },
+          uStrength: { value: 0 },
+          uPixelScale: { value: 1 },
+          uOrigin: { value: new THREE.Vector3() },
+          uNormal: { value: new THREE.Vector3(1, 0, 0) },
+        },
+        vertexShader: debrisVertexShader,
+        fragmentShader: debrisFragmentShader,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      // The attribute carries three seeds per shard, not a position.
+      const geometry = this.createPointGeometry(this.quality.debris, 1, true);
+      this.geometries.push(geometry);
+      this.materials.push(material);
+      this.debrisPools.push(material);
+      const points = new THREE.Points(geometry, material);
+      points.frustumCulled = false;
+      points.renderOrder = 3;
+      this.world.add(points);
+    }
+
     this.moteGeometry = this.createPointGeometry(this.quality.motes, 3.4, false);
     this.geometries.push(this.moteGeometry);
     const motes = new THREE.Points(this.moteGeometry, this.moteMaterial);
@@ -617,6 +711,8 @@ export class VaultRenderer {
     const splitStep = Math.min(deltaSeconds, 1 / 60);
     this.splitVelocity += (-this.split * 190 - this.splitVelocity * 11) * splitStep;
     this.split = Math.max(0, this.split + this.splitVelocity * splitStep);
+    // Struck stone cools over a few seconds.
+    this.heat = Math.max(0, this.heat - deltaSeconds * 0.34);
 
     const open = smoothstep(RAMPS.openFadeStart, RAMPS.openFadeEnd, progress);
     const reveal = smoothstep(RAMPS.revealFadeStart, RAMPS.revealFadeEnd, progress);
@@ -638,7 +734,10 @@ export class VaultRenderer {
       .copy(this.pointerDirection.set(pointerX, -pointerY, 1))
       .normalize();
     core.uSplit!.value = this.split;
+    core.uHeat!.value = this.heat;
     (core.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
+
+    for (const pool of this.debrisPools) pool.uniforms.uTime!.value = this.elapsed;
 
     this.heartMaterial.uniforms.uSplit!.value = this.split;
     this.heartMaterial.uniforms.uReveal!.value = reveal;
@@ -683,15 +782,23 @@ export class VaultRenderer {
       halo.scale.set(haloScale, haloScale, 1);
     }
 
-    // Held: stiff and well damped, so it tracks the hand. Released: slack and
-    // underdamped, so it swings back through centre and settles.
-    const stiffness = this.grabbed ? 135 : 34;
-    const damping = this.grabbed ? 19 : 6.2;
+    // Held: stiff and well damped, so it tracks the hand. Released: slack, so a
+    // throw keeps its momentum long enough to reach a wall before the tether
+    // draws it back to the middle.
+    // The loose figures matter: a strong tether decelerates a throw to nothing
+    // just short of the wall, so the object only ever kisses it.
+    const stiffness = this.grabbed ? 135 : 4.5;
+    const damping = this.grabbed ? 19 : 2.2;
     const springStep = Math.min(deltaSeconds, 1 / 60);
-    this.grabVelocity.x += ((this.grabTarget.x - this.grabOffset.x) * stiffness - this.grabVelocity.x * damping) * springStep;
-    this.grabVelocity.y += ((this.grabTarget.y - this.grabOffset.y) * stiffness - this.grabVelocity.y * damping) * springStep;
+    this.measureChamber();
+    // The hand can only carry it as far as the chamber allows.
+    const targetX = clamp(this.grabTarget.x, -this.boundsLocal.x, this.boundsLocal.x);
+    const targetY = clamp(this.grabTarget.y, -this.boundsLocal.y, this.boundsLocal.y);
+    this.grabVelocity.x += ((targetX - this.grabOffset.x) * stiffness - this.grabVelocity.x * damping) * springStep;
+    this.grabVelocity.y += ((targetY - this.grabOffset.y) * stiffness - this.grabVelocity.y * damping) * springStep;
     this.grabOffset.x += this.grabVelocity.x * springStep;
     this.grabOffset.y += this.grabVelocity.y * springStep;
+    this.collideWithChamber();
 
     const speed = this.grabVelocity.length();
     // A broken object flails harder than an intact one.
@@ -733,12 +840,90 @@ export class VaultRenderer {
   }
 
   /**
+   * Bounces the object off the walls of the chamber and records the strike.
+   *
+   * The extents are recomputed rather than cached because they depend on the
+   * frame scale, which changes when a phone is rotated. They are expressed in
+   * the world group's own units, where the film's half height is constant
+   * whatever the viewport does.
+   */
+  private measureChamber(): void {
+    const halfHeight = Math.tan((this.camera.fov * Math.PI) / 360) * 6;
+    const visibleHalfWidth = (halfHeight * this.camera.aspect) / this.frameScale;
+    // The chamber's lit interior, not the whole frame: the door fills the sides.
+    this.boundsLocal.set(
+      Math.max(0.5, Math.min(halfHeight * (16 / 9), visibleHalfWidth) * 0.62 - 0.55),
+      Math.max(0.4, halfHeight * 0.72 - 0.55),
+    );
+  }
+
+  private collideWithChamber(): void {
+    const bounce = (
+      offset: number,
+      velocity: number,
+      limit: number,
+    ): readonly [number, number, number] => {
+      if (Math.abs(offset) <= limit) return [offset, velocity, 0];
+      const side = Math.sign(offset);
+      // Only a wall the object is still travelling into counts as a strike.
+      if (velocity * side <= 0) return [side * limit, velocity, 0];
+      return [side * limit, -velocity * 0.58, Math.abs(velocity)];
+    };
+
+    const [x, vx, hitX] = bounce(this.grabOffset.x, this.grabVelocity.x, this.boundsLocal.x);
+    const [y, vy, hitY] = bounce(this.grabOffset.y, this.grabVelocity.y, this.boundsLocal.y);
+    this.grabOffset.set(x, y);
+    this.grabVelocity.set(vx, vy);
+
+    const strength = Math.max(hitX, hitY);
+    if (strength < 1.4) return;
+
+    this.registerStrike(
+      strength,
+      hitX >= hitY ? -Math.sign(x) : 0,
+      hitY > hitX ? -Math.sign(y) : 0,
+    );
+  }
+
+  /** Heat, shock, debris and a report to the caller, from one wall strike. */
+  private registerStrike(speed: number, normalX: number, normalY: number): void {
+    const force = clamp((speed - 1.4) / 6);
+    this.heat = clamp(this.heat + 0.22 + force * 0.5);
+    this.shock = Math.min(1, this.shock + 0.3 + force * 0.45);
+    this.pulseAmount = Math.min(1, this.pulseAmount + 0.25 + force * 0.4);
+    this.pendingImpact = Math.max(this.pendingImpact, force);
+
+    const pool = this.debrisPools[this.debrisCursor % this.debrisPools.length];
+    this.debrisCursor += 1;
+    if (!pool) return;
+    pool.uniforms.uBurstTime!.value = this.elapsed;
+    pool.uniforms.uStrength!.value = 0.5 + force * 1.5;
+    (pool.uniforms.uOrigin!.value as THREE.Vector3).set(
+      this.grabOffset.x + normalX * 0.55,
+      this.grabOffset.y + normalY * 0.55,
+      0,
+    );
+    (pool.uniforms.uNormal!.value as THREE.Vector3).set(normalX, normalY, 0.35).normalize();
+  }
+
+  /**
+   * The force of the last wall strike the caller has not answered yet, so sound
+   * and copy can respond to it. Reading it clears it.
+   */
+  consumeImpact(): number {
+    const impact = this.pendingImpact;
+    this.pendingImpact = 0;
+    return impact;
+  }
+
+  /**
    * How much light the object is throwing right now, for the interface to bleed
    * into the surrounding page.
    */
   getGlow(): number {
     return clamp(this.reveal * (
-      this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7 + this.split * 2.2
+      this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7
+      + this.split * 2.2 + this.heat * 0.4
     ));
   }
 
@@ -766,7 +951,12 @@ export class VaultRenderer {
    * Lets go. Returns true when it was let go hard enough to break open, so the
    * caller can answer with sound and copy.
    */
-  releaseGrab(): boolean {
+  releaseGrab(throwX = 0, throwY = 0): boolean {
+    // The throw comes from how fast the hand was moving, not from where the
+    // spring had got to. Dragging into a wall pins the object against it with
+    // no speed left, so without this a flick at the wall does nothing at all.
+    this.grabVelocity.x += clamp(throwX, -9, 9) * 1.55;
+    this.grabVelocity.y += clamp(-throwY, -9, 9) * 1.05;
     const speed = this.grabVelocity.length();
     this.setGrab(false);
     if (speed < THROW_SPEED) return false;
@@ -812,6 +1002,7 @@ export class VaultRenderer {
     const pixelScale = Math.max(0.6, this.drawingBuffer.y / 900);
     this.particleMaterial.uniforms.uPixelScale!.value = pixelScale;
     this.moteMaterial.uniforms.uPixelScale!.value = pixelScale;
+    for (const pool of this.debrisPools) pool.uniforms.uPixelScale!.value = pixelScale;
     this.postChain?.setSize(
       Math.max(1, Math.floor(this.drawingBuffer.x)),
       Math.max(1, Math.floor(this.drawingBuffer.y)),
@@ -831,6 +1022,9 @@ export class VaultRenderer {
     this.grabVelocity.set(0, 0);
     this.split = 0;
     this.splitVelocity = 0;
+    this.heat = 0;
+    this.pendingImpact = 0;
+    for (const pool of this.debrisPools) pool.uniforms.uStrength!.value = 0;
     this.camera.position.set(0, 0, 6);
     this.artifact.rotation.set(0, 0, 0);
     this.artifact.visible = false;

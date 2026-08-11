@@ -59,6 +59,7 @@ interface ExperienceProps {
   readonly onChargeStart: () => void;
   readonly onChargeChange: (amount: number) => void;
   readonly onChargeRelease: (amount: number) => void;
+  readonly onWallImpact: (force: number) => void;
   readonly onFracture: () => void;
   readonly onVisibilityChange: (visible: boolean) => void;
   readonly onCinematicChange: (running: boolean) => void;
@@ -98,6 +99,7 @@ export const Experience = ({
   onChargeChange,
   onChargeRelease,
   onFracture,
+  onWallImpact,
   onVisibilityChange,
   onCinematicChange,
   onOpenAbout,
@@ -133,8 +135,13 @@ export const Experience = ({
   const cinematicRef = useRef(false);
   const contactsRef = useRef(0);
   const chargeRef = useRef(0);
-  const holdRef = useRef({ active: false, dragging: false, startX: 0, startY: 0, lastX: 0 });
+  const holdRef = useRef({
+    active: false, dragging: false, startX: 0, startY: 0,
+    lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
+  });
   const resonantReleasesRef = useRef(0);
+  const strikesRef = useRef(0);
+  const strikeTimerRef = useRef<number | null>(null);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -148,6 +155,7 @@ export const Experience = ({
   const [artifactResponding, setArtifactResponding] = useState(false);
   const [charging, setCharging] = useState(false);
   const [carrying, setCarrying] = useState(false);
+  const [struck, setStruck] = useState(false);
   const [fractured, setFractured] = useState(false);
   const [resonant, setResonant] = useState(false);
   const sources = useMemo(selectVideoSources, []);
@@ -188,6 +196,7 @@ export const Experience = ({
   useEffect(() => () => {
     if (interactionTimerRef.current !== null) window.clearTimeout(interactionTimerRef.current);
     if (fractureTimerRef.current !== null) window.clearTimeout(fractureTimerRef.current);
+    if (strikeTimerRef.current !== null) window.clearTimeout(strikeTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -417,6 +426,17 @@ export const Experience = ({
         // The object's own light spills out of the canvas and into the interface.
         stage?.style.setProperty('--glow', (rendererRef.current?.getGlow() ?? 0).toFixed(3));
 
+        // Wall strikes originate inside the physics step, so they are collected
+        // here rather than raised from an event.
+        const impact = rendererRef.current?.consumeImpact() ?? 0;
+        if (impact > 0) {
+          strikesRef.current += 1;
+          onWallImpact(impact);
+          setStruck(true);
+          if (strikeTimerRef.current !== null) window.clearTimeout(strikeTimerRef.current);
+          strikeTimerRef.current = window.setTimeout(() => setStruck(false), 1_500);
+        }
+
         if (progressRef.current) {
           progressRef.current.textContent = String(Math.round(displayProgress * 100)).padStart(3, '0');
         }
@@ -449,6 +469,7 @@ export const Experience = ({
         telemetry.dpr = rendererMetrics?.dpr ?? window.devicePixelRatio;
         telemetry.charge = chargeRef.current;
         telemetry.contacts = contactsRef.current;
+        telemetry.strikes = strikesRef.current;
 
         if (debugRef.current) {
           debugRef.current.textContent = [
@@ -500,6 +521,10 @@ export const Experience = ({
       startX: clientX,
       startY: clientY,
       lastX: clientX,
+      lastY: clientY,
+      lastAt: performance.now(),
+      throwX: 0,
+      throwY: 0,
     };
     setCharging(true);
     onChargeStart();
@@ -509,7 +534,18 @@ export const Experience = ({
     const hold = holdRef.current;
     if (!hold.active) return;
     const delta = clientX - hold.lastX;
+
+    // Hand speed in normalised screen widths per second, smoothed so a single
+    // jittery sample cannot register as a throw. This, rather than where the
+    // object ended up, is what a throw is made of.
+    const now = performance.now();
+    const elapsed = Math.min(0.12, Math.max(0.008, (now - hold.lastAt) / 1000));
+    hold.throwX = hold.throwX * 0.45 + ((clientX - hold.lastX) / window.innerWidth) * 2 / elapsed * 0.55;
+    hold.throwY = hold.throwY * 0.45 + ((clientY - hold.lastY) / window.innerHeight) * 2 / elapsed * 0.55;
     hold.lastX = clientX;
+    hold.lastY = clientY;
+    hold.lastAt = now;
+
     const travelled = Math.hypot(clientX - hold.startX, clientY - hold.startY);
     if (!hold.dragging && travelled > DRAG_THRESHOLD_PX) {
       // Moving is a different gesture from holding, so the charge is given back.
@@ -542,12 +578,15 @@ export const Experience = ({
     if (!hold.active) return;
     const charge = chargeRef.current;
     const wasDragging = hold.dragging;
-    holdRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0 };
+    holdRef.current = {
+      active: false, dragging: false, startX: 0, startY: 0,
+      lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
+    };
     setCharging(false);
     setCarrying(false);
     chargeRef.current = 0;
     // Letting go hard enough breaks it open rather than simply setting it down.
-    if (rendererRef.current?.releaseGrab()) noteFracture();
+    if (rendererRef.current?.releaseGrab(hold.throwX, hold.throwY)) noteFracture();
     onChargeRelease(wasDragging ? 0 : charge);
     if (wasDragging || !rendererRef.current?.release(charge)) return;
 
@@ -572,7 +611,12 @@ export const Experience = ({
     contactsRef.current = 0;
     chargeRef.current = 0;
     resonantReleasesRef.current = 0;
-    holdRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0 };
+    strikesRef.current = 0;
+    setStruck(false);
+    holdRef.current = {
+      active: false, dragging: false, startX: 0, startY: 0,
+      lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
+    };
     rendererRef.current?.setGrab(false);
     setArtifactResponding(false);
     setCarrying(false);
@@ -690,18 +734,20 @@ export const Experience = ({
                   endHold();
                 }}
               />
-              <p className={`artifact-guidance${artifactResponding ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
+              <p className={`artifact-guidance${artifactResponding || struck ? ' is-responding' : ''}${charging ? ' is-charging' : ''}`}>
                 {fractured
                   ? 'STRUCTURE BREACHED · IT IS CLOSING ITSELF'
-                  : carrying
-                    ? 'THE OBJECT FOLLOWS YOU · THROW IT'
-                    : resonant
-                      ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
-                      : charging
-                        ? 'CHARGING — RELEASE TO DISCHARGE'
-                        : artifactResponding
-                          ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
-                          : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
+                  : struck
+                    ? 'IMPACT ON CONTAINMENT WALL · SURFACE GLOWING'
+                    : carrying
+                      ? 'THE OBJECT FOLLOWS YOU · THROW IT AT THE WALL'
+                      : resonant
+                        ? 'RESONANCE SUSTAINED · SIGNAL DECODED'
+                        : charging
+                          ? 'CHARGING — RELEASE TO DISCHARGE'
+                          : artifactResponding
+                            ? 'CONTACT REGISTERED · RESONANCE AMPLIFIED'
+                            : 'HOLD IT STILL TO CHARGE · DRAG TO CARRY'}
               </p>
             </>
           )}

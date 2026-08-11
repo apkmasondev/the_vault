@@ -20,6 +20,7 @@ export interface Telemetry {
   dpr: number;
   charge: number;
   contacts: number;
+  strikes: number;
 }
 
 export type TelemetryReader = () => Readonly<Telemetry>;
@@ -39,4 +40,5 @@ export const createTelemetry = (resolution: string): Telemetry => ({
   dpr: 1,
   charge: 0,
   contacts: 0,
+  strikes: 0,
 });

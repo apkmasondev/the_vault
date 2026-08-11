@@ -26,6 +26,7 @@ const READOUTS = [
   ['PIXEL RATIO', 'dpr'],
   ['ARTIFACT CHARGE', 'charge'],
   ['CONTACTS LOGGED', 'contacts'],
+  ['WALL STRIKES', 'strikes'],
 ] as const;
 
 /**
@@ -100,6 +101,7 @@ export const AboutPanel = ({
       set('dpr', t.dpr.toFixed(2));
       set('charge', `${Math.round(t.charge * 100)}%`);
       set('contacts', String(t.contacts));
+      set('strikes', String(t.strikes));
       frame = window.requestAnimationFrame(tick);
     };
 
@@ -142,7 +144,8 @@ export const AboutPanel = ({
             <ul className="about__guide">
               <li><span>Scroll</span>Everything is tied to how far down the page you are. Scroll back and the door closes again.</li>
               <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
-              <li><span>Drag</span>Pull it and it comes with you, with weight behind it, then swings back through the middle.</li>
+              <li><span>Drag</span>Pull it and it comes with you, with weight behind it.</li>
+              <li><span>Throw</span>Let go while your hand is still moving. It carries on, hits the wall of the chamber, sheds burning shards and comes back hot.</li>
             <li><span>Throw</span>Let go while it is still moving fast and it comes apart, and you get a moment of what is inside before it closes itself.</li>
               <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
               <li><span>Play it for me</span>Hands off, if you would rather just watch. Any scroll takes control back.</li>
@@ -207,11 +210,18 @@ export const AboutPanel = ({
           </p>
           <p>
             Carrying it runs on a spring rather than on the pointer directly: stiff and damped
-            while you hold it so it tracks your hand, slack and underdamped when you let go so it
-            swings back through the middle and settles. The faster you haul it, the more it draws
-            out along the direction of travel and pinches across it, the way a heavy drop behaves.
-            Let go above a threshold speed and the shell parts along the throw, light escapes the
-            seam, and a stiff spring pulls the break shut again in about a third of a second.
+            while you hold it so it tracks your hand, slack once you let go so its momentum
+            survives. The faster you haul it, the more it draws out along the direction of travel
+            and pinches across it, the way a heavy drop behaves.
+          </p>
+          <p>
+            The chamber has walls and the object bounces off them. A throw takes its speed from
+            your hand rather than from where the object had got to, because dragging it into a wall
+            pins it there with nothing left to give. Every strike knocks shards loose, drives heat
+            into the stone — the cracks run from gold up towards forge red, then cool over a few
+            seconds — and shakes the camera. Thrown hard enough, the shell parts along the line of
+            the throw, light escapes the seam, and a stiff spring pulls the break shut again in
+            about a third of a second.
           </p>
           <p>
             While the soundtrack plays it is analysed live, and its low band displaces the surface —
