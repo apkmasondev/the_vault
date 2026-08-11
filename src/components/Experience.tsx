@@ -35,6 +35,8 @@ const RESONANT_CHARGE = 0.8;
 const RESONANT_RELEASES = 3;
 /** Horizontal travel that turns a hold into a rotation drag. */
 const DRAG_THRESHOLD_PX = 10;
+/** Point in the sequence at which the opening film starts downloading. */
+const OPENING_FILM_PREFETCH = 0.2;
 /** Seconds of being ignored before the object starts asking to be touched. */
 const INVITE_DELAY_SECONDS = 4;
 const INVITE_RAMP_SECONDS = 2;
@@ -170,6 +172,7 @@ export const Experience = ({
   const strikeTimerRef = useRef<number | null>(null);
   const lastTouchedAtRef = useRef(0);
   const artifactExposedRef = useRef(false);
+  const openingFilmRequestedRef = useRef(false);
   const [posterReady, setPosterReady] = useState(false);
   const [video1Ready, setVideo1Ready] = useState(false);
   const [video2Ready, setVideo2Ready] = useState(false);
@@ -258,12 +261,22 @@ export const Experience = ({
     };
   }, []);
 
-  useEffect(() => {
+  /**
+   * Fetching the opening film is deferred rather than started on entry.
+   * Measured on entry it was pulling its full weight — 3.5 MB at 540p, 6.6 MB
+   * at 720p — against the unlock film, which is the one needed immediately;
+   * the unlock film did not finish buffering until nearly half way through the
+   * sequence even on a local connection. It is not needed until the crossfade
+   * just before the halfway point, so it waits until the sequence is underway
+   * and the film in front of it has had the bandwidth to itself.
+   */
+  const requestOpeningFilm = useCallback((): void => {
     const second = video2Ref.current;
-    if (!authorized || !second) return;
+    if (!second || openingFilmRequestedRef.current) return;
+    openingFilmRequestedRef.current = true;
     second.preload = 'auto';
     second.load();
-  }, [authorized]);
+  }, []);
 
   useEffect(() => {
     // Not `once`: a scroll event fired before authorization would otherwise
@@ -418,6 +431,10 @@ export const Experience = ({
           scrubbers?.second.update(video2TimeForProgress(displayProgress, duration2), now);
         }
 
+        // Far enough in that the unlock film has had its run, far enough out
+        // that the opening film has time to arrive before the crossfade.
+        if (displayProgress > OPENING_FILM_PREFETCH) requestOpeningFilm();
+
         const crossfade = video2ReadyRef.current || video2FailedRef.current
           ? smoothstep(RAMPS.crossfadeStart, RAMPS.crossfadeEnd, displayProgress)
           : 0;
@@ -561,7 +578,9 @@ export const Experience = ({
     onDestroyed,
     onProgress,
     onVisibilityChange,
+    onWallImpact,
     readAudioBands,
+    requestOpeningFilm,
     sources.resolution,
     stopCinematic,
     telemetry,
