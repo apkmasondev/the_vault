@@ -202,6 +202,10 @@
   text-shadow: 0 0 1.4rem rgba(215, 183, 122, 0.52);
 }
 
+.artifact-guidance.is-lost {
+  color: var(--danger);
+}
+
 .artifact-guidance.is-charging {
   color: color-mix(in srgb, var(--accent) calc(var(--charge, 0) * 100%), rgba(232, 228, 219, 0.58));
   letter-spacing: calc(0.2em + var(--charge, 0) * 0.08em);
@@ -582,6 +586,23 @@
   bottom: calc(1.25rem + env(safe-area-inset-bottom));
 }
 
+.hud__integrity {
+  position: absolute;
+  bottom: calc(3rem + env(safe-area-inset-bottom));
+  left: calc(1.5rem + env(safe-area-inset-left));
+  display: flex;
+  gap: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__integrity span:last-child {
+  color: var(--accent);
+}
+
+.hud__integrity.is-lost span:last-child {
+  color: var(--danger);
+}
+
 .hud__identity span:first-child,
 .hud__status span:last-child,
 .hud__progress span:first-child {
@@ -779,6 +800,20 @@
   color: var(--accent);
   font-size: 0.64rem;
   letter-spacing: 0.12em;
+}
+
+.finale__note {
+  max-width: 32rem;
+  margin: 1.4rem 0 0 !important;
+  color: rgba(183, 96, 79, 0.85);
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: 0.62rem;
+  line-height: 1.8;
+  letter-spacing: 0.1em;
+}
+
+.finale--destroyed .finale__record dd {
+  color: var(--danger);
 }
 
 .finale__actions {
@@ -1353,6 +1388,12 @@
 
   .hud__status {
     display: none;
+  }
+
+  /* Integrity stays on a phone even though the system line does not: it is
+     feedback for a permanent consequence, not decoration. */
+  .hud__integrity {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom));
   }
 
   .hud__identity span:last-child {

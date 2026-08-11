@@ -13,6 +13,11 @@ const coreVertexShader = /* glsl */ `
   uniform vec3 uStretch;
   uniform vec3 uSplitAxis;
   uniform float uSplit;
+  uniform float uDamage;
+  uniform float uShatter;
+  attribute vec3 aCentroid;
+  attribute vec3 aAxis;
+  attribute vec2 aTumble;
   varying vec3 vNormal;
   varying vec3 vWorldPosition;
   varying float vNoise;
@@ -71,6 +76,22 @@ const coreVertexShader = /* glsl */ `
     float side = dot(normalize(position), uSplitAxis) >= 0.0 ? 1.0 : -1.0;
     displaced += uSplitAxis * side * uSplit;
 
+    // Damage loosens the surface before it gives way entirely.
+    displaced += normal * uDamage * (detail - 0.5) * 0.09;
+
+    if (uShatter > 0.0) {
+      // Every triangle becomes its own shard: flung out along its own bearing,
+      // tumbling about its own axis, falling as it goes.
+      vec3 local = displaced - aCentroid;
+      float spin = uShatter * aTumble.x * 9.0;
+      float c = cos(spin);
+      float s = sin(spin);
+      vec3 tumbled = local * c + cross(aAxis, local) * s + aAxis * dot(aAxis, local) * (1.0 - c);
+      vec3 launched = aCentroid + normalize(aCentroid) * aTumble.y * uShatter * 2.6;
+      launched.y -= 1.5 * uShatter * uShatter;
+      displaced = launched + tumbled;
+    }
+
     vec4 world = modelMatrix * vec4(displaced, 1.0);
     vWorldPosition = world.xyz;
     vNormal = normalize(mat3(modelMatrix) * normal);
@@ -86,6 +107,8 @@ const coreFragmentShader = /* glsl */ `
   uniform float uFailure;
   uniform float uCharge;
   uniform float uHeat;
+  uniform float uDamage;
+  uniform float uShatter;
   uniform vec3 uAudio;
   uniform vec3 uPointer;
   varying vec3 vNormal;
@@ -101,10 +124,17 @@ const coreFragmentShader = /* glsl */ `
 
     // Veins, not patches: light escapes only along the narrow band where the
     // high-frequency field crosses its threshold, widening under charge.
-    float width = 0.016 + uCharge * 0.022;
+    float width = 0.016 + uCharge * 0.022 + uDamage * 0.026;
     float crack = abs(vDetail - 0.5);
     float vein = 1.0 - smoothstep(0.0, width, crack);
     float ember = 1.0 - smoothstep(0.0, width * 6.0, crack);
+
+    // Damage opens a second, coarser network on top of the fine one: the deep
+    // structural breaks, as opposed to the surface veining.
+    float faultWidth = 0.012 + uDamage * 0.05;
+    float fault = (1.0 - smoothstep(0.0, faultWidth, abs(vNoise - 0.47)))
+      * smoothstep(0.02, 0.35, uDamage);
+    vein = max(vein, fault);
 
     // Stone that has cooled unevenly, so the body is never a flat silhouette.
     float relief = smoothstep(0.35, 0.72, vNoise);
@@ -113,21 +143,26 @@ const coreFragmentShader = /* glsl */ `
     float facing = max(dot(normal, normalize(uPointer)), 0.0);
     vec3 obsidian = vec3(0.026, 0.022, 0.019);
     vec3 oldGold = vec3(0.62, 0.40, 0.18);
-    // Struck repeatedly, the cracks run from gold up towards forge red.
-    vec3 heat = mix(vec3(0.96, 0.74, 0.42), vec3(1.0, 0.34, 0.13), uHeat * 0.85);
+    // Struck repeatedly, the cracks run from gold up towards forge red, and a
+    // failing object never fully cools between blows.
+    float glowing = max(uHeat, uDamage * 0.75);
+    vec3 heat = mix(vec3(0.96, 0.74, 0.42), vec3(1.0, 0.34, 0.13), glowing * 0.85);
 
     // A dark body first, then a rim, then the light coming out of the cracks.
     vec3 color = obsidian * occlusion;
     color += oldGold * fresnel * 0.46;
     // A hard glint keeps it reading as polished stone rather than matte clay.
     color += vec3(1.0, 0.88, 0.66) * pow(facingView, 22.0) * 0.09;
-    color += heat * ember * (0.05 + uCharge * 0.1 + uHeat * 0.5) * occlusion;
-    color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85 + uHeat * 1.15);
+    color += heat * ember * (0.05 + uCharge * 0.1 + glowing * 0.5) * occlusion;
+    color += heat * vein * (0.55 + uPulse * 0.6 + uCharge * 0.85 + glowing * 1.15);
     // The side under the pointer runs hotter, so the object tracks your hand.
     color += heat * facing * vein * uCharge * 0.35;
-    color += heat * (uFailure * fresnel * 0.14 + uAudio.z * fresnel * 0.2 + uHeat * fresnel * 0.3);
+    color += heat * (uFailure * fresnel * 0.14 + uAudio.z * fresnel * 0.2 + glowing * fresnel * 0.3);
 
-    float alpha = uReveal * (0.9 + fresnel * 0.1);
+    // Shards cool and dim as they scatter, so the shatter has an end.
+    float dying = 1.0 - smoothstep(0.35, 1.0, uShatter);
+    color *= mix(1.0, 0.35, smoothstep(0.0, 0.7, uShatter));
+    float alpha = uReveal * (0.9 + fresnel * 0.1) * dying;
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -278,6 +313,7 @@ const heartVertexShader = /* glsl */ `
 
 const heartFragmentShader = /* glsl */ `
   uniform float uSplit;
+  uniform float uShatter;
   uniform float uReveal;
   uniform float uTime;
   uniform vec3 uSplitAxis;
@@ -291,7 +327,11 @@ const heartFragmentShader = /* glsl */ `
     // Brightest across the seam, falling away toward the poles of the break.
     float seam = 1.0 - smoothstep(0.0, 0.62, abs(dot(normalize(vLocal), uSplitAxis)));
     vec3 color = mix(vec3(1.0, 0.44, 0.11), vec3(1.0, 0.97, 0.9), fresnel * 0.6 + seam * 0.4);
-    float exposure = uReveal * smoothstep(0.01, 0.08, uSplit) * flicker * (0.25 + seam * 1.35);
+    float opened = smoothstep(0.01, 0.08, uSplit) * (0.25 + seam * 1.35);
+    // When it finally breaks apart the whole interior is exposed, flares, and
+    // burns out with the shards.
+    float pyre = smoothstep(0.0, 0.06, uShatter) * (1.0 - smoothstep(0.12, 0.72, uShatter)) * 2.4;
+    float exposure = uReveal * flicker * max(opened, pyre);
     gl_FragColor = vec4(color * exposure, exposure * 0.85);
   }
 `;
@@ -453,6 +493,10 @@ export class VaultRenderer {
   private split = 0;
   private splitVelocity = 0;
   private heat = 0;
+  private damage = 0;
+  private shatter = 0;
+  private destroyed = false;
+  private pendingDestruction = false;
   private pendingImpact = 0;
   private debrisCursor = 0;
   private readonly debrisPools: THREE.ShaderMaterial[] = [];
@@ -517,6 +561,8 @@ export class VaultRenderer {
         uSplitAxis: { value: new THREE.Vector3(1, 0, 0) },
         uSplit: { value: 0 },
         uHeat: { value: 0 },
+        uDamage: { value: 0 },
+        uShatter: { value: 0 },
       },
       vertexShader: coreVertexShader,
       fragmentShader: coreFragmentShader,
@@ -526,6 +572,7 @@ export class VaultRenderer {
     this.heartMaterial = new THREE.ShaderMaterial({
       uniforms: {
         uSplit: { value: 0 },
+        uShatter: { value: 0 },
         uReveal: { value: 0 },
         uTime: { value: 0 },
         uSplitAxis: { value: new THREE.Vector3(1, 0, 0) },
@@ -583,7 +630,7 @@ export class VaultRenderer {
       this.fogMaterial,
     );
 
-    const coreGeometry = new THREE.IcosahedronGeometry(0.82, this.quality.geometryDetail);
+    const coreGeometry = this.createShardableGeometry(0.82, this.quality.geometryDetail);
     const heartGeometry = new THREE.IcosahedronGeometry(0.6, 3);
     this.geometries.push(coreGeometry, heartGeometry);
     // The interior is drawn first so the shell reads as being in front of it.
@@ -713,13 +760,17 @@ export class VaultRenderer {
     this.split = Math.max(0, this.split + this.splitVelocity * splitStep);
     // Struck stone cools over a few seconds.
     this.heat = Math.max(0, this.heat - deltaSeconds * 0.34);
+    // The scatter runs once, forward only, over about two and a half seconds.
+    if (this.destroyed) this.shatter = Math.min(1, this.shatter + deltaSeconds * 0.4);
 
     const open = smoothstep(RAMPS.openFadeStart, RAMPS.openFadeEnd, progress);
     const reveal = smoothstep(RAMPS.revealFadeStart, RAMPS.revealFadeEnd, progress);
     const failure = smoothstep(RAMPS.failureFadeStart, RAMPS.failureFadeEnd, progress);
     this.reveal = reveal;
     this.charge = charge;
-    this.artifact.visible = reveal > 0.002 && progress < RAMPS.artifactHiddenAfter;
+    this.artifact.visible = reveal > 0.002
+      && progress < RAMPS.artifactHiddenAfter
+      && this.shatter < 1;
 
     const core = this.coreMaterial.uniforms;
     core.uTime!.value = this.elapsed;
@@ -735,11 +786,14 @@ export class VaultRenderer {
       .normalize();
     core.uSplit!.value = this.split;
     core.uHeat!.value = this.heat;
+    core.uDamage!.value = this.damage;
+    core.uShatter!.value = this.shatter;
     (core.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
 
     for (const pool of this.debrisPools) pool.uniforms.uTime!.value = this.elapsed;
 
     this.heartMaterial.uniforms.uSplit!.value = this.split;
+    this.heartMaterial.uniforms.uShatter!.value = this.shatter;
     this.heartMaterial.uniforms.uReveal!.value = reveal;
     this.heartMaterial.uniforms.uTime!.value = this.elapsed;
     (this.heartMaterial.uniforms.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
@@ -885,25 +939,62 @@ export class VaultRenderer {
     );
   }
 
-  /** Heat, shock, debris and a report to the caller, from one wall strike. */
+  /** Heat, damage, debris and a report to the caller, from one wall strike. */
   private registerStrike(speed: number, normalX: number, normalY: number): void {
+    if (this.destroyed) return;
     const force = clamp((speed - 1.4) / 6);
     this.heat = clamp(this.heat + 0.22 + force * 0.5);
     this.shock = Math.min(1, this.shock + 0.3 + force * 0.45);
     this.pulseAmount = Math.min(1, this.pulseAmount + 0.25 + force * 0.4);
     this.pendingImpact = Math.max(this.pendingImpact, force);
 
+    // Damage never heals. Roughly five solid hits will finish it.
+    this.damage = clamp(this.damage + 0.1 + force * 0.2);
+    this.burstDebris(0.5 + force * 1.5, normalX, normalY, 0.55);
+    if (this.damage >= 1) this.beginShatter();
+  }
+
+  private burstDebris(strength: number, normalX: number, normalY: number, offset: number): void {
     const pool = this.debrisPools[this.debrisCursor % this.debrisPools.length];
     this.debrisCursor += 1;
     if (!pool) return;
     pool.uniforms.uBurstTime!.value = this.elapsed;
-    pool.uniforms.uStrength!.value = 0.5 + force * 1.5;
+    pool.uniforms.uStrength!.value = strength;
     (pool.uniforms.uOrigin!.value as THREE.Vector3).set(
-      this.grabOffset.x + normalX * 0.55,
-      this.grabOffset.y + normalY * 0.55,
+      this.grabOffset.x + normalX * offset,
+      this.grabOffset.y + normalY * offset,
       0,
     );
     (pool.uniforms.uNormal!.value as THREE.Vector3).set(normalX, normalY, 0.35).normalize();
+  }
+
+  /** The blow that finishes it: everything at once, and no way back. */
+  private beginShatter(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.pendingDestruction = true;
+    this.shatter = 0.0001;
+    this.shock = 1;
+    this.pulseAmount = 1;
+    this.heat = 1;
+    this.grabbed = false;
+    this.grabTarget.set(0, 0);
+    this.grabVelocity.set(0, 0);
+    // Both pools at once, thrown in opposite directions.
+    this.burstDebris(2.6, 1, 0.3, 0);
+    this.burstDebris(2.6, -1, -0.2, 0);
+  }
+
+  /** True once, on the frame the object is destroyed. */
+  consumeDestruction(): boolean {
+    const destroyed = this.pendingDestruction;
+    this.pendingDestruction = false;
+    return destroyed;
+  }
+
+  /** What is left of the object, from one down to zero. */
+  getIntegrity(): number {
+    return clamp(1 - this.damage);
   }
 
   /**
@@ -924,6 +1015,7 @@ export class VaultRenderer {
     return clamp(this.reveal * (
       this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7
       + this.split * 2.2 + this.heat * 0.4
+      + (1 - smoothstep(0, 0.5, this.shatter)) * this.shatter * 6
     ));
   }
 
@@ -1023,6 +1115,10 @@ export class VaultRenderer {
     this.split = 0;
     this.splitVelocity = 0;
     this.heat = 0;
+    this.damage = 0;
+    this.shatter = 0;
+    this.destroyed = false;
+    this.pendingDestruction = false;
     this.pendingImpact = 0;
     for (const pool of this.debrisPools) pool.uniforms.uStrength!.value = 0;
     this.camera.position.set(0, 0, 6);
@@ -1048,6 +1144,70 @@ export class VaultRenderer {
     this.postChain?.dispose();
     this.postChain = null;
     this.renderer.dispose();
+  }
+
+  /**
+   * The core, built so it can come apart. Every triangle is given its own
+   * vertices plus its centroid, a tumbling axis and a bearing, which is what
+   * lets the shatter fling each face away as an independent shard. Indexed
+   * geometry shares vertices between faces and cannot be separated at all.
+   */
+  private createShardableGeometry(radius: number, detail: number): THREE.BufferGeometry {
+    const geometry = new THREE.IcosahedronGeometry(radius, detail).toNonIndexed();
+    const positions = geometry.getAttribute('position');
+    const faces = positions.count / 3;
+    const centroids = new Float32Array(positions.count * 3);
+    const axes = new Float32Array(positions.count * 3);
+    const tumbles = new Float32Array(positions.count * 2);
+
+    let seed = 0x9e3779b1;
+    const random = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+
+    for (let face = 0; face < faces; face += 1) {
+      const first = face * 3;
+      let cx = 0;
+      let cy = 0;
+      let cz = 0;
+      for (let corner = 0; corner < 3; corner += 1) {
+        cx += positions.getX(first + corner);
+        cy += positions.getY(first + corner);
+        cz += positions.getZ(first + corner);
+      }
+      cx /= 3;
+      cy /= 3;
+      cz /= 3;
+
+      // A unit axis from a random direction, and how hard this shard is thrown.
+      let ax = random() * 2 - 1;
+      let ay = random() * 2 - 1;
+      let az = random() * 2 - 1;
+      const length = Math.hypot(ax, ay, az) || 1;
+      ax /= length;
+      ay /= length;
+      az /= length;
+      const spin = (random() * 2 - 1) * 1.6;
+      const bearing = 0.5 + random() * 1.1;
+
+      for (let corner = 0; corner < 3; corner += 1) {
+        const vertex = first + corner;
+        centroids[vertex * 3] = cx;
+        centroids[vertex * 3 + 1] = cy;
+        centroids[vertex * 3 + 2] = cz;
+        axes[vertex * 3] = ax;
+        axes[vertex * 3 + 1] = ay;
+        axes[vertex * 3 + 2] = az;
+        tumbles[vertex * 2] = spin;
+        tumbles[vertex * 2 + 1] = bearing;
+      }
+    }
+
+    geometry.setAttribute('aCentroid', new THREE.BufferAttribute(centroids, 3));
+    geometry.setAttribute('aAxis', new THREE.BufferAttribute(axes, 3));
+    geometry.setAttribute('aTumble', new THREE.BufferAttribute(tumbles, 2));
+    return geometry;
   }
 
   private createPointGeometry(count: number, radius: number, sphere: boolean): THREE.BufferGeometry {

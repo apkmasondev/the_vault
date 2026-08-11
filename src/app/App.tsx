@@ -141,6 +141,8 @@ export const App = () => {
     audioRef.current?.impact(0.3 + force * 0.7);
   }, []);
 
+  const soundShatter = useCallback((): void => audioRef.current?.shatter(), []);
+
   const updateVisibility = useCallback((visible: boolean): void => {
     if (visible) void audioRef.current?.resume();
     else void audioRef.current?.suspend();
@@ -178,6 +180,7 @@ export const App = () => {
           onChargeRelease={releaseCharge}
           onFracture={soundFracture}
           onWallImpact={soundWallImpact}
+          onDestroyed={soundShatter}
           onVisibilityChange={updateVisibility}
           onCinematicChange={setCinematicRunning}
           onOpenAbout={openAbout}

@@ -60,6 +60,7 @@ interface ExperienceProps {
   readonly onChargeChange: (amount: number) => void;
   readonly onChargeRelease: (amount: number) => void;
   readonly onWallImpact: (force: number) => void;
+  readonly onDestroyed: () => void;
   readonly onFracture: () => void;
   readonly onVisibilityChange: (visible: boolean) => void;
   readonly onCinematicChange: (running: boolean) => void;
@@ -84,6 +85,19 @@ const cueCopy: Record<TimelineCue, readonly [string, string?]> = {
   final: ['THE VAULT', 'AN INTERACTIVE WEBGL EXPERIMENT'],
 };
 
+/**
+ * Once the object has been broken beyond repair the chamber is empty, and the
+ * beats about it waking cannot stand. The sequence changes its account of what
+ * happened instead of narrating something that is no longer on screen.
+ */
+const destroyedCueCopy: Partial<Record<TimelineCue, readonly [string, string?]>> = {
+  object: ['OBJECT: DESTROYED', 'RECOVERED IN FRAGMENTS'],
+  origin: ['ORIGIN: UNKNOWN', 'AND NOW UNRECOVERABLE'],
+  stability: ['NOTHING LEFT TO CONTAIN', 'THE CHAMBER HOLDS DUST'],
+  failure: ['CONTAINMENT IRRELEVANT', undefined],
+  collapse: ['V-07 IS GONE', 'IT TOOK NOTHING WITH IT'],
+};
+
 export const Experience = ({
   authorized,
   soundEnabled,
@@ -100,6 +114,7 @@ export const Experience = ({
   onChargeRelease,
   onFracture,
   onWallImpact,
+  onDestroyed,
   onVisibilityChange,
   onCinematicChange,
   onOpenAbout,
@@ -156,6 +171,8 @@ export const Experience = ({
   const [charging, setCharging] = useState(false);
   const [carrying, setCarrying] = useState(false);
   const [struck, setStruck] = useState(false);
+  const [destroyed, setDestroyed] = useState(false);
+  const integrityRef = useRef<HTMLSpanElement>(null);
   const [fractured, setFractured] = useState(false);
   const [resonant, setResonant] = useState(false);
   const sources = useMemo(selectVideoSources, []);
@@ -436,6 +453,18 @@ export const Experience = ({
           if (strikeTimerRef.current !== null) window.clearTimeout(strikeTimerRef.current);
           strikeTimerRef.current = window.setTimeout(() => setStruck(false), 1_500);
         }
+        if (rendererRef.current?.consumeDestruction()) {
+          setDestroyed(true);
+          onDestroyed();
+        }
+
+        const integrity = rendererRef.current?.getIntegrity() ?? 1;
+        telemetry.integrity = integrity;
+        if (integrityRef.current) {
+          const reading = Math.round(integrity * 100);
+          const text = reading > 0 ? `${String(reading).padStart(3, '0')}%` : 'LOST';
+          if (integrityRef.current.textContent !== text) integrityRef.current.textContent = text;
+        }
 
         if (progressRef.current) {
           progressRef.current.textContent = String(Math.round(displayProgress * 100)).padStart(3, '0');
@@ -501,6 +530,7 @@ export const Experience = ({
     };
   }, [
     onChargeChange,
+    onDestroyed,
     onProgress,
     onVisibilityChange,
     readAudioBands,
@@ -509,7 +539,7 @@ export const Experience = ({
     telemetry,
   ]);
 
-  const [primary, secondary] = cueCopy[cue];
+  const [primary, secondary] = (destroyed && destroyedCueCopy[cue]) || cueCopy[cue];
   const finaleVisible = cue === 'final';
   const fallbackVisible = webglFailed && (cue === 'object' || cue === 'origin' || cue === 'stability');
   const artifactInteractive = cue === 'object' || cue === 'origin' || cue === 'stability';
@@ -613,6 +643,7 @@ export const Experience = ({
     resonantReleasesRef.current = 0;
     strikesRef.current = 0;
     setStruck(false);
+    setDestroyed(false);
     holdRef.current = {
       active: false, dragging: false, startX: 0, startY: 0,
       lastX: 0, lastY: 0, lastAt: 0, throwX: 0, throwY: 0,
@@ -709,7 +740,10 @@ export const Experience = ({
           <canvas ref={canvasRef} className={`vault-canvas${webglFailed ? ' is-fallback' : ''}`} aria-hidden="true" />
           <div className="stage-shade" aria-hidden="true" />
           {fallbackVisible && <div className="artifact-fallback is-visible" aria-hidden="true" />}
-          {artifactInteractive && !webglFailed && (
+          {artifactInteractive && !webglFailed && destroyed && (
+            <p className="artifact-guidance is-lost">NOTHING LEFT TO TOUCH</p>
+          )}
+          {artifactInteractive && !webglFailed && !destroyed && (
             <>
               <button
                 className={`artifact-hit-target${charging ? ' is-charging' : ''}${carrying ? ' is-carrying' : ''}`}
@@ -756,9 +790,17 @@ export const Experience = ({
             <div className="hud">
               <div className="hud__identity"><span>V-07</span><span>CONTAINMENT</span></div>
               <div className="hud__status">
-            <span>SYSTEM</span>
-            <span>{cue === 'failure' ? 'CRITICAL' : cue === 'collapse' ? 'NO SIGNAL' : 'MONITORING'}</span>
-          </div>
+                <span>SYSTEM</span>
+                <span>{cue === 'failure' ? 'CRITICAL' : cue === 'collapse' ? 'NO SIGNAL' : 'MONITORING'}</span>
+              </div>
+              {/* Damage is permanent, so it has to be legible before it matters.
+                  Without this the object simply explodes for no visible reason. */}
+              {artifactInteractive && !webglFailed && (
+                <div className={`hud__integrity${destroyed ? ' is-lost' : ''}`}>
+                  <span>INTEGRITY</span>
+                  <span ref={integrityRef}>100%</span>
+                </div>
+              )}
               <div className="hud__progress"><span ref={progressRef}>000</span><span>/ 100</span></div>
               <div className="hud__controls">
                 <button
@@ -791,7 +833,7 @@ export const Experience = ({
 
           {/* Keyed on the cue so each beat remounts and replays its entrance
               instead of the text swapping in place. */}
-          <div className="narrative" key={cue} aria-hidden="true">
+          <div className="narrative" key={`${cue}-${destroyed}`} aria-hidden="true">
             <p className="narrative__primary">{primary}</p>
             {secondary && <p className="narrative__secondary">{secondary}</p>}
           </div>
@@ -804,7 +846,9 @@ export const Experience = ({
           {finaleVisible && (
             <Finale
               contacts={contactsRef.current}
+              strikes={strikesRef.current}
               resonant={resonant}
+              destroyed={destroyed}
               onAbout={onOpenAbout}
               onReplay={replay}
             />

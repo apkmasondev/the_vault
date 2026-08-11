@@ -72,7 +72,14 @@ export const ReducedMotionExperience = ({
             </div>
           )}
           {final ? (
-            <Finale contacts={0} resonant={false} onAbout={onOpenAbout} onReplay={replay} />
+            <Finale
+              contacts={0}
+              strikes={0}
+              resonant={false}
+              destroyed={false}
+              onAbout={onOpenAbout}
+              onReplay={replay}
+            />
           ) : (
             <>
               <div className="reduced-experience__copy" aria-live="polite">

@@ -27,6 +27,7 @@ const READOUTS = [
   ['ARTIFACT CHARGE', 'charge'],
   ['CONTACTS LOGGED', 'contacts'],
   ['WALL STRIKES', 'strikes'],
+  ['STRUCTURAL INTEGRITY', 'integrity'],
 ] as const;
 
 /**
@@ -102,6 +103,7 @@ export const AboutPanel = ({
       set('charge', `${Math.round(t.charge * 100)}%`);
       set('contacts', String(t.contacts));
       set('strikes', String(t.strikes));
+      set('integrity', t.integrity > 0 ? `${Math.round(t.integrity * 100)}%` : 'DESTROYED');
       frame = window.requestAnimationFrame(tick);
     };
 
@@ -146,6 +148,7 @@ export const AboutPanel = ({
               <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
               <li><span>Drag</span>Pull it and it comes with you, with weight behind it.</li>
               <li><span>Throw</span>Let go while your hand is still moving. It carries on, hits the wall of the chamber, sheds burning shards and comes back hot.</li>
+              <li><span>Break it</span>Damage is permanent — watch the integrity figure. Keep throwing it and eventually there will be nothing left, and the piece will end differently.</li>
             <li><span>Throw</span>Let go while it is still moving fast and it comes apart, and you get a moment of what is inside before it closes itself.</li>
               <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
               <li><span>Play it for me</span>Hands off, if you would rather just watch. Any scroll takes control back.</li>
@@ -222,6 +225,22 @@ export const AboutPanel = ({
             seconds — and shakes the camera. Thrown hard enough, the shell parts along the line of
             the throw, light escapes the seam, and a stiff spring pulls the break shut again in
             about a third of a second.
+          </p>
+          <p>
+            Heat fades. Damage does not. Each strike takes a permanent bite out of the object's
+            integrity, which is why that figure sits in the corner of the screen from the moment it
+            is exposed — a consequence you cannot see coming is indistinguishable from a bug. As it
+            falls, a second and coarser network of breaks opens over the fine veining, and the
+            object stops cooling fully between blows.
+          </p>
+          <p>
+            At zero it does not survive. The core is built as separate triangles rather than as a
+            shared mesh, each one carrying its own centroid, tumbling axis and bearing, so it can
+            actually come apart: every face is flung outward on its own heading, spinning about its
+            own axis and falling as it goes, while the interior is exposed, flares, and burns out
+            with them. Indexed geometry shares its vertices between faces and cannot be separated
+            at all. The chamber is then empty for the rest of the sequence, the closing record says
+            so, and the only way back is to run it again.
           </p>
           <p>
             While the soundtrack plays it is analysed live, and its low band displaces the surface —

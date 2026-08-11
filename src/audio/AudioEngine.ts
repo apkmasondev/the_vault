@@ -224,6 +224,58 @@ export class AudioEngine {
     body.stop(now + 0.65);
   }
 
+  /**
+   * The object coming apart for good. Longer and lower than the fracture, with
+   * a rattle of falling stone under it so the room is left with the debris.
+   */
+  shatter(): void {
+    if (!this.enabled || !this.context || !this.master) return;
+    const context = this.context;
+    const master = this.master;
+    const now = context.currentTime;
+
+    const burst = context.createBufferSource();
+    const burstFilter = context.createBiquadFilter();
+    const burstGain = context.createGain();
+    burst.buffer = this.createNoise(1.5, 1.4);
+    burstFilter.type = 'bandpass';
+    burstFilter.frequency.setValueAtTime(2_600, now);
+    burstFilter.frequency.exponentialRampToValueAtTime(240, now + 1.1);
+    burstFilter.Q.value = 0.7;
+    burstGain.gain.setValueAtTime(0.3, now);
+    burstGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+    burst.connect(burstFilter).connect(burstGain).connect(master);
+    burst.start(now);
+
+    const collapse = context.createOscillator();
+    const collapseGain = context.createGain();
+    collapse.type = 'sawtooth';
+    collapse.frequency.setValueAtTime(150, now);
+    collapse.frequency.exponentialRampToValueAtTime(26, now + 0.9);
+    collapseGain.gain.setValueAtTime(0.0001, now);
+    collapseGain.gain.exponentialRampToValueAtTime(0.2, now + 0.015);
+    collapseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+    collapse.connect(collapseGain).connect(master);
+    collapse.start(now);
+    collapse.stop(now + 1.4);
+
+    // Stone landing, scattered over the second after the break.
+    for (let piece = 0; piece < 7; piece += 1) {
+      const delay = 0.12 + Math.random() * 0.85;
+      const tick = context.createBufferSource();
+      const tickFilter = context.createBiquadFilter();
+      const tickGain = context.createGain();
+      tick.buffer = this.createNoise(0.12, 5);
+      tickFilter.type = 'bandpass';
+      tickFilter.frequency.value = 400 + Math.random() * 1_400;
+      tickFilter.Q.value = 2.2;
+      tickGain.gain.setValueAtTime(0.05 + Math.random() * 0.05, now + delay);
+      tickGain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.16);
+      tick.connect(tickFilter).connect(tickGain).connect(master);
+      tick.start(now + delay);
+    }
+  }
+
   async suspend(): Promise<void> {
     if (this.context?.state === 'running') await this.context.suspend();
   }
