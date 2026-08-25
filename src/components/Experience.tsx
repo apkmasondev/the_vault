@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   RAMPS,
   SCROLL_DAMPING_SECONDS,
   TIMELINE,
   VIDEO_DURATION_FALLBACK,
+  VIDEO_RESOLUTION,
 } from '../app/constants';
 import type { AudioBands } from '../audio/AudioEngine';
 import type { Telemetry } from '../app/telemetry';
 import { VideoScrubber } from '../media/VideoScrubber';
-import { selectVideoSources } from '../media/videoSources';
 import { clamp, damp, smoothstep } from '../utils/math';
 import {
   chapterIdForProgress,
@@ -182,12 +182,10 @@ export const Experience = ({
   // returned object is rebuilt on every render, and depending on it would tear
   // the loop down and rebuild it every time any of this state changed.
   const { beginFrame, endFrame, chargeRef, contactsRef, strikesRef } = interaction;
-  const sources = useMemo(selectVideoSources, []);
 
   authorizedRef.current = authorized;
   video2ReadyRef.current = video2Ready;
   video2FailedRef.current = video2Failed;
-  telemetry.resolution = sources.resolution;
 
   useEffect(() => {
     const progress = (posterReady ? 45 : 0) + (video1Ready ? 35 : 0) + (webglReady ? 20 : 0);
@@ -218,12 +216,11 @@ export const Experience = ({
 
   /**
    * Fetching the opening film is deferred rather than started on entry.
-   * Measured on entry it was pulling its full weight — 3.5 MB at 540p, 6.6 MB
-   * at 720p — against the unlock film, which is the one needed immediately;
-   * the unlock film did not finish buffering until nearly half way through the
-   * sequence even on a local connection. It is not needed until the crossfade
-   * just before the halfway point, so it waits until the sequence is underway
-   * and the film in front of it has had the bandwidth to itself.
+   * Measured on entry it was pulling its 2.9 MB against the unlock film, which
+   * is the one needed immediately, and delayed it well into the sequence. It is
+   * not needed until the crossfade just before the halfway point, so it waits
+   * until the sequence is underway and the film in front of it has had the
+   * bandwidth to itself.
    */
   const requestOpeningFilm = useCallback((): void => {
     const second = video2Ref.current;
@@ -445,7 +442,7 @@ export const Experience = ({
             `progress ${displayProgress.toFixed(4)} / ${targetProgress.toFixed(4)}`,
             `video1 ${firstMetrics?.presentedTime.toFixed(2) ?? '--'} / ${firstMetrics?.targetTime.toFixed(2) ?? '--'}`,
             `video2 ${secondMetrics?.presentedTime.toFixed(2) ?? '--'} / ${secondMetrics?.targetTime.toFixed(2) ?? '--'}`,
-            `source ${sources.resolution}`,
+            `source ${VIDEO_RESOLUTION}`,
             `webgl ${rendererMetrics?.tier ?? 'fallback'} · ${rendererMetrics?.fps ?? '--'} fps · ${rendererMetrics?.drawCalls ?? 0} calls`,
             `dpr ${rendererMetrics?.dpr.toFixed(2) ?? '--'}`,
             `viewport ${window.innerWidth}×${window.innerHeight}`,
@@ -478,7 +475,6 @@ export const Experience = ({
     onVisibilityChange,
     readAudioBands,
     requestOpeningFilm,
-    sources.resolution,
     strikesRef,
     telemetry,
   ]);
@@ -521,7 +517,6 @@ export const Experience = ({
           }}
         >
           <MediaStack
-            sources={sources}
             posterRef={posterRef}
             transitionRef={transitionRef}
             video1Ref={video1Ref}

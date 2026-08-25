@@ -51,19 +51,20 @@ npm run preview
 
 ## Media pipeline
 
-The two supplied 1280×720, 24 FPS source renders are pre-rendered footage. They are converted locally to silent all-intra H.264 derivatives — every frame a keyframe — for precise forward and reverse seeking:
+The two supplied 1280×720, 24 FPS source renders are pre-rendered footage. They are converted locally to silent H.264 delivery files with a six-frame GOP and no B-frames, which is what makes scrubbing cheap in both directions:
 
 ```bash
-ffmpeg -i source.mp4 -c:v libx264 -preset veryslow -crf 22 -x264-params "keyint=1:min-keyint=1:scenecut=0:bframes=0:ref=1" -pix_fmt yuv420p -an -movflags +faststart out-720-gop1.mp4
+ffmpeg -i source.mp4 -an -vf "fps=24,scale=1280:720:flags=lanczos,format=yuv420p" -c:v libx264 -preset veryslow -crf 22 -x264-params "keyint=6:min-keyint=6:scenecut=0:bframes=0:ref=1" -movflags +faststart vault-unlock-720.mp4
 ```
 
-The 540p variants use the same parameters with `-vf scale=960:540:flags=lanczos` and CRF 24. The sources are themselves lossy at roughly 1.9 Mb/s, so encoding the derivatives far above that only preserves compression artefacts; CRF 22 holds SSIM 0.983 against the source while costing a third less than a higher-bitrate encode.
+These films were all-intra until the encode was measured. Against the source, all-intra at CRF 22 scored VMAF 92.4 at 6.7 MB; the same CRF at a six-frame GOP scores 94.8 at 2.7 MB, because inter prediction spends on the picture what a keyframe spends on re-describing it. The seek cost that bought is 1.2 ms — 160 scrubbed seeks averaged 4.8 ms against a keyframe-per-frame 3.6 ms when running backwards, both far inside the 33 ms budget the scrubber throttles to. B-frames stay off: they would have to decode out of order on every seek.
 
+GOP 12 was measured too and rejected. It is a further 28% smaller for no quality cost, but backward seeks reach a p95 of 11.9 ms on a desktop with hardware decode, which leaves no headroom on a phone.
 
-- `public/media/vault-unlock-720-gop1.mp4`
-- `public/media/vault-unlock-540-gop1.mp4`
-- `public/media/vault-opening-720-gop1.mp4`
-- `public/media/vault-opening-540-gop1.mp4`
+A 540p tier existed to spare constrained devices the download. At 2.9 MB the 720p master is lighter than that tier ever was, so it was dropped and one master now serves everything:
+
+- `public/media/vault-unlock-720.mp4`
+- `public/media/vault-opening-720.mp4`
 
 The reveal after frame 239 of the opening film is rendered live in WebGL. The supplied soundtrack is delivered as a 96 kb/s AAC-LC file (`public/media/vault-corroded-silence.m4a`), filtered against the sequence intensity, analysed for the reactive geometry, and mixed with synthesised charge and impact tones. Original root-level MP4 source renders are intentionally ignored by Git; only optimized delivery files are published.
 

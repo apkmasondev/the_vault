@@ -1,3 +1,4 @@
+import { VIDEO_RESOLUTION } from './constants';
 import type { QualityTier } from '../webgl/quality';
 import type { TimelineCue } from '../utils/timeline';
 
@@ -26,7 +27,7 @@ export interface Telemetry {
 
 export type TelemetryReader = () => Readonly<Telemetry>;
 
-export const createTelemetry = (resolution: string): Telemetry => ({
+export const createTelemetry = (): Telemetry => ({
   progress: 0,
   targetProgress: 0,
   cue: 'idle',
@@ -34,7 +35,7 @@ export const createTelemetry = (resolution: string): Telemetry => ({
   video1Presented: 0,
   video2Target: 0,
   video2Presented: 0,
-  resolution,
+  resolution: VIDEO_RESOLUTION,
   webglTier: 'fallback',
   fps: 0,
   drawCalls: 0,

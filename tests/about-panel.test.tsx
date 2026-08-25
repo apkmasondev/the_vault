@@ -8,7 +8,7 @@ afterEach(cleanup);
 
 const panel = (overrides: Partial<Parameters<typeof AboutPanel>[0]> = {}) => {
   const onClose = vi.fn();
-  const telemetry = createTelemetry('720p');
+  const telemetry = createTelemetry();
   render(
     <AboutPanel
       readTelemetry={() => telemetry}

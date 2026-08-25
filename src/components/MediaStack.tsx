@@ -1,9 +1,7 @@
 import type { RefObject } from 'react';
 import { asset, MEDIA } from '../app/constants';
-import type { VideoSourceSet } from '../media/videoSources';
 
 interface MediaStackProps {
-  readonly sources: VideoSourceSet;
   readonly posterRef: RefObject<HTMLImageElement | null>;
   readonly transitionRef: RefObject<HTMLImageElement | null>;
   readonly video1Ref: RefObject<HTMLVideoElement | null>;
@@ -21,7 +19,6 @@ interface MediaStackProps {
  * belong to the caller, which holds the refs.
  */
 export const MediaStack = ({
-  sources,
   posterRef,
   transitionRef,
   video1Ref,
@@ -57,10 +54,14 @@ export const MediaStack = ({
     <video
       ref={video1Ref}
       className="media-layer video-layer video-layer--first"
-      src={sources.unlock}
+      src={asset(MEDIA.unlock)}
       muted
       playsInline
-      preload="metadata"
+      // The unlock film is scrubbed from the first pixel of scroll, so it is
+      // fetched whole rather than by range request. At 2.9 MB it lands well
+      // inside the entry hold; while it was all-intra and 7 MB it could not,
+      // and the opening seconds seeked against a half-filled buffer.
+      preload="auto"
       disablePictureInPicture
       draggable={false}
       tabIndex={-1}
@@ -76,7 +77,7 @@ export const MediaStack = ({
     <video
       ref={video2Ref}
       className="media-layer video-layer video-layer--second"
-      src={sources.opening}
+      src={asset(MEDIA.opening)}
       muted
       playsInline
       preload="none"

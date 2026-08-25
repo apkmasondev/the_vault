@@ -1,4 +1,11 @@
 export const VIDEO_FPS = 24;
+/**
+ * Both films ship as a single 720p master. A 540p tier existed while the films
+ * were all-intra and weighed 6.6 MB; re-encoded with a six-frame GOP each one
+ * is 2.9 MB, which is lighter than that 540p tier ever was, so the second
+ * resolution had nothing left to save. Reported by the About panel.
+ */
+export const VIDEO_RESOLUTION = '720p';
 export const VIDEO_2_REVEAL_CUTOFF = 239 / VIDEO_FPS;
 export const VIDEO_DURATION_FALLBACK = 10;
 export const SCROLL_DAMPING_SECONDS = 0.105;
@@ -71,10 +78,8 @@ export const CHAPTERS: readonly Chapter[] = [
 ] as const;
 
 export const MEDIA = {
-  unlock720: 'media/vault-unlock-720-gop1.mp4',
-  unlock540: 'media/vault-unlock-540-gop1.mp4',
-  opening720: 'media/vault-opening-720-gop1.mp4',
-  opening540: 'media/vault-opening-540-gop1.mp4',
+  unlock: 'media/vault-unlock-720.mp4',
+  opening: 'media/vault-opening-720.mp4',
   poster: 'media/vault-poster.webp',
   transition: 'media/vault-opening-transition.webp',
   radioactiveOrb: 'media/about-radioactive-orb.webp',

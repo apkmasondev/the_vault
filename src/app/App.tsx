@@ -30,7 +30,7 @@ export const App = () => {
   const [cinematicRunning, setCinematicRunning] = useState(false);
   const audioRef = useRef<AudioEngine | null>(null);
   const authorizeTimerRef = useRef<number | null>(null);
-  const telemetryRef = useRef(createTelemetry('—'));
+  const telemetryRef = useRef(createTelemetry());
   const controlsRef = useRef<VaultControls | null>(null);
   const reducedMotion = useReducedMotion();
 
