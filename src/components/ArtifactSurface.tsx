@@ -22,9 +22,12 @@ interface ArtifactSurfaceProps {
   readonly onHoldStart: (clientX: number, clientY: number) => void;
   readonly onHoldMove: (clientX: number, clientY: number) => void;
   readonly onHoldEnd: () => void;
+  readonly onHoldCancel: () => void;
   readonly onNudge: (directionX: number, directionY: number) => void;
   /** True while a hold is in progress, so a key repeat cannot start a second. */
   readonly isHolding: () => boolean;
+  readonly inspecting: boolean;
+  readonly onToggleInspection: () => void;
 }
 
 /**
@@ -47,8 +50,11 @@ export const ArtifactSurface = ({
   onHoldStart,
   onHoldMove,
   onHoldEnd,
+  onHoldCancel,
   onNudge,
   isHolding,
+  inspecting,
+  onToggleInspection,
 }: ArtifactSurfaceProps) => {
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
     const nudge = NUDGE_KEYS[event.key];
@@ -71,6 +77,7 @@ export const ArtifactSurface = ({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    if (event.button !== 0 || isHolding()) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     onHoldStart(event.clientX, event.clientY);
   };
@@ -86,11 +93,23 @@ export const ArtifactSurface = ({
         onPointerDown={handlePointerDown}
         onPointerMove={(event) => onHoldMove(event.clientX, event.clientY)}
         onPointerUp={onHoldEnd}
-        onPointerCancel={onHoldEnd}
-        onLostPointerCapture={onHoldEnd}
+        onPointerCancel={onHoldCancel}
+        onLostPointerCapture={onHoldCancel}
+        onBlur={onHoldCancel}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
       />
+      <div className="artifact-instruments">
+        <span className="artifact-instruments__label">V–07 / FIELD CONTROL</span>
+        <button className="artifact-inspect" type="button" aria-pressed={inspecting} onClick={onToggleInspection}>
+          <span className="artifact-inspect__icon" aria-hidden="true">{inspecting ? '−' : '+'}</span>
+          {inspecting ? 'SEAL THE CORE' : 'EXPOSE THE CORE'}
+          <span className="artifact-inspect__state" aria-hidden="true">{inspecting ? 'OPEN' : 'SEALED'}</span>
+        </button>
+        <span className="artifact-instruments__reading" role="status">
+          {inspecting ? 'SHELL DISPLACED · INTERNAL SIGNAL ACTIVE' : '20 SEGMENTS · UNKNOWN ALLOY'}
+        </span>
+      </div>
       <p className={`artifact-guidance${responding ? ' is-responding' : ''}${phase.charging ? ' is-charging' : ''}`}>
         {promptFor(phase)}
       </p>

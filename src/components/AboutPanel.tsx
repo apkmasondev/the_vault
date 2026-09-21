@@ -180,8 +180,8 @@ export const AboutPanel = ({
             There is no plot to follow and nothing to win. The chamber opens at exactly the speed
             you open it, and stops when you stop. What is inside is not inert — it takes light from
             being held, it leans toward your hand, and it keeps count of every time you reach for
-            it. Whether you touch it at all is the only real decision the piece asks of you, and
-            the record at the end reads differently depending on what you chose.
+            it. You can open its shell, coax a signal out of it, or break it against the walls.
+            The record at the end reads differently depending on what you chose.
           </p>
         </section>
 
@@ -232,10 +232,12 @@ export const AboutPanel = ({
             <ul className="about__guide">
               <li><span>Scroll</span>The entire sequence follows your position on the page. Scroll back and the door closes again.</li>
               <li><span>Hold</span>Press the object and keep still. It takes on charge for as long as you hold it; let go and the charge leaves as a shockwave.</li>
+              <li><span>Expose</span>Choose EXPOSE THE CORE to separate twenty armored segments; SEAL THE CORE closes them again. Listen to the magnetic latches release and the signal inside. Three fully charged releases also persuade it to open.</li>
               <li><span>Drag</span>Pull it and it comes with you, with weight behind it.</li>
               <li><span>Throw</span>Release it while your hand is moving. It keeps that momentum, strikes the chamber wall and returns hot.</li>
-              <li><span>Fracture</span>A hard enough impact briefly parts the shell and exposes what is inside.</li>
-              <li><span>Destroy</span>Damage is permanent. Repeated strikes reduce integrity to zero and change the final record.</li>
+              <li><span>Fracture</span>A fast enough throw briefly parts the shell and exposes what is inside.</li>
+              <li><span>Destroy</span>There is time to experiment: roughly ten solid wall strikes will break it, depending on force. Damage is permanent until replay; zero integrity changes the final record.</li>
+              <li><span>Keyboard</span>Focus the object and hold Space or Enter to charge. Use the arrow keys to push it. The field control also works with the keyboard.</li>
               <li><span>Chapters</span>The marks down the right edge jump to the named moments.</li>
               <li><span>Play it for me</span>Use the automatic sequence if you would rather watch. Any scroll takes control back.</li>
             </ul>
@@ -247,7 +249,8 @@ export const AboutPanel = ({
           <p>
             The rest is for anyone who wants to look behind the seal. The films are never played
             conventionally and there is no animation library: the page holds one number between
-            zero and one, and everything you have seen is derived from it.
+            zero and one to direct the sequence. Live physics, shader animation and your gestures
+            take over once the object appears.
           </p>
         </section>
 
@@ -286,8 +289,9 @@ export const AboutPanel = ({
           </p>
           <p>
             At the final matched frame of the second film, a live Three.js scene takes over the same
-            point on screen. The object, its fissures, smoke, particulate and light are generated in
-            real time, which is why the chamber can react to you.
+            point on screen. Its twenty beveled armor plates and luminous inlays were authored in
+            Blender and batched into two draws. The molten core, orbiting gimbals, electrical
+            filaments, smoke and light move in real time, which is why the chamber can react to you.
           </p>
         </section>
 
@@ -300,8 +304,9 @@ export const AboutPanel = ({
           </p>
           <p>
             Holding builds charge and widens the light escaping through the shell. Heat fades, but
-            structural damage remains. If integrity reaches zero, the geometry separates into its
-            individual faces and the final archive records what happened.
+            structural damage remains. The reinforced shell tolerates more impacts while each hit
+            still feels heavy. If integrity reaches zero, the armor and core scatter into pieces
+            and the final archive records what happened.
           </p>
         </section>
 
@@ -314,8 +319,8 @@ export const AboutPanel = ({
             <section>
               <h4>Frame pipeline</h4>
               <p>
-                Both films are encoded with every frame as a keyframe. That costs more disk space,
-                but makes arbitrary frames reachable immediately. The transition keeps the outgoing
+                Both films use a six-frame GOP with no B-frames, balancing download size and fast
+                seeking in either direction. The transition keeps the outgoing
                 film opaque underneath the incoming frame, so no poster or empty layer can flash
                 through the blend.
               </p>
@@ -337,14 +342,31 @@ export const AboutPanel = ({
                 heading. At zero integrity those faces can travel, spin and fall independently
                 instead of stretching a shared mesh.
               </p>
+              <p>
+                The armor and its inscriptions arrive in a local 138 KB GLB. Each segment keeps its
+                own center inside the merged geometry, so the shell can open and scatter in shaders.
+                Gimbals and electrical filaments are generated live. Wall strikes remove 5–15
+                percentage points of integrity according to force, leaving more time to explore.
+              </p>
+            </section>
+            <section>
+              <h4>Sound of the chamber</h4>
+              <p>
+                Opening the shell releases six magnetic latches across the stereo field, followed
+                by a pressure vent and a sustained three-tone signal. Synthesized effects share a
+                stereo convolution reverb; a compressor controls peaks in the combined mix.
+                Closing the shell, leaving the contact window or destroying the object stops its
+                sustained signal. Muting and replay also release those oscillators.
+              </p>
             </section>
             <section>
               <h4>Device strategy</h4>
               <p>
                 Quality is selected from device memory, core count, pointer type and the Save-Data
-                hint, then reduced if frame times slip. Phones receive smaller films and a lighter
-                scene. Missing WebGL, failed media and reduced-motion preferences each have a
-                dedicated fallback.
+                hint, then reduced if frame times slip. All devices receive the same optimized 720p
+                films; constrained devices use a lighter live scene. A missing GLB leaves the
+                procedural core available. Missing WebGL, failed media and reduced-motion
+                preferences each have a dedicated fallback.
               </p>
             </section>
             <section>
@@ -353,7 +375,8 @@ export const AboutPanel = ({
                 <li><span>Build</span>Vite 8 · TypeScript strict · ESLint · Vitest</li>
                 <li><span>Interface</span>React 19, no UI framework</li>
                 <li><span>Render</span>Three.js, hand-written GLSL, no post-processing library</li>
-                <li><span>Audio</span>Web Audio: one AAC file, live analysis, synthesised impacts</li>
+                <li><span>Model</span>Blender · local GLB · independently moving armor segments</li>
+                <li><span>Audio</span>Web Audio: AAC, live analysis, stereo latches, convolution reverb</li>
                 <li><span>Delivery</span>GitHub Actions to GitHub Pages</li>
                 <li><span>Remote services</span>None — no external fonts, analytics, trackers or remote media</li>
               </ul>

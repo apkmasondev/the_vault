@@ -72,7 +72,7 @@ export const CHAPTERS: readonly Chapter[] = [
   { id: 'lock', label: 'LOCK SEQUENCE', progress: 0.18 },
   { id: 'release', label: 'RELEASED', progress: TIMELINE.warningStart + 0.01 },
   { id: 'aperture', label: 'APERTURE', progress: TIMELINE.video2Start + 0.05 },
-  { id: 'object', label: 'THE OBJECT', progress: TIMELINE.revealStart + 0.02 },
+  { id: 'object', label: 'THE OBJECT', progress: TIMELINE.revealEnd - 0.02 },
   { id: 'breach', label: 'BREACH', progress: TIMELINE.failureStart + 0.005 },
   { id: 'collapse', label: 'COLLAPSE', progress: TIMELINE.collapseStart + 0.005 },
 ] as const;

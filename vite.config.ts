@@ -45,8 +45,9 @@ export default defineConfig(() => {
       cssCodeSplit: true,
       sourcemap: false,
       reportCompressedSize: true,
-      // Three.js is isolated in one lazy chunk; 134 kB gzip is intentional and never blocks LCP.
-      chunkSizeWarningLimit: 600,
+      // Three.js + live shaders: ~155 kB gzip, loaded after first paint.
+      // The GLTF parser is a separate lazy chunk (~13 kB gzip).
+      chunkSizeWarningLimit: 650,
     },
     test: {
       // Node by default so the pure logic stays fast; the component tests opt

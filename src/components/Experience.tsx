@@ -53,6 +53,7 @@ interface ExperienceProps {
   readonly onWallImpact: (force: number) => void;
   readonly onDestroyed: () => void;
   readonly onFracture: () => void;
+  readonly onInspectionChange: (open: boolean) => void;
   readonly onVisibilityChange: (visible: boolean) => void;
   readonly onCinematicChange: (running: boolean) => void;
   readonly onOpenAbout: () => void;
@@ -132,6 +133,7 @@ export const Experience = ({
   onChargeChange,
   onChargeRelease,
   onFracture,
+  onInspectionChange,
   onWallImpact,
   onDestroyed,
   onVisibilityChange,
@@ -176,7 +178,7 @@ export const Experience = ({
     sectionTopRef, scrollDistanceRef, seek, toggleCinematic, stopCinematic, advance,
   } = useCinematicScroll(onCinematicChange, cinematicRunning);
   const interaction = useArtifactInteraction(rendererRef, {
-    onChargeStart, onChargeChange, onChargeRelease, onWallImpact, onDestroyed, onFracture,
+    onChargeStart, onChargeChange, onChargeRelease, onWallImpact, onDestroyed, onFracture, onInspectionChange,
   });
   // Only the stable half of the interaction may reach the animation loop. The
   // returned object is rebuilt on every render, and depending on it would tear
@@ -391,6 +393,11 @@ export const Experience = ({
         });
         // The object's own light spills out of the canvas and into the interface.
         stage?.style.setProperty('--glow', (rendererRef.current?.getGlow() ?? 0).toFixed(3));
+        const hitTarget = rendererRef.current?.getHitTarget();
+        if (hitTarget && stage) {
+          stage.style.setProperty('--artifact-x', `${hitTarget.x.toFixed(2)}%`);
+          stage.style.setProperty('--artifact-y', `${hitTarget.y.toFixed(2)}%`);
+        }
 
 
         stage?.style.setProperty('--invite', endFrame(now).toFixed(3));
@@ -547,7 +554,10 @@ export const Experience = ({
               onHoldStart={interaction.beginHold}
               onHoldMove={interaction.trackHold}
               onHoldEnd={interaction.endHold}
+              onHoldCancel={interaction.cancelHold}
               onNudge={interaction.nudge}
+              inspecting={interaction.inspecting}
+              onToggleInspection={interaction.toggleInspection}
             />
           )}
 

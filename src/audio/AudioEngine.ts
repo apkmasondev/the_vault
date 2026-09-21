@@ -15,6 +15,12 @@ export interface AudioBands {
 export class AudioEngine {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  private effects: GainNode | null = null;
+  private reverb: ConvolverNode | null = null;
+  private inspectionGain: GainNode | null = null;
+  private inspectionOscillators: OscillatorNode[] = [];
+  private lastInspectionSound = -10;
+  private inspectionOpen = false;
   private atmosphere: GainNode | null = null;
   private filter: BiquadFilterNode | null = null;
   private analyser: AnalyserNode | null = null;
@@ -46,6 +52,8 @@ export class AudioEngine {
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
     this.master.gain.linearRampToValueAtTime(enabled ? 0.32 : 0, now + (enabled ? 0.65 : 0.32));
+    if (!enabled) this.endInspection();
+    else if (this.inspectionOpen && !this.inspectionGain) this.inspect(true);
   }
 
   update(progress: number): void {
@@ -95,7 +103,7 @@ export class AudioEngine {
     oscillator.type = 'triangle';
     oscillator.frequency.setValueAtTime(58, now);
     gain.gain.setValueAtTime(0.0001, now);
-    oscillator.connect(gain).connect(this.master);
+    oscillator.connect(gain).connect(this.effects ?? this.master);
     oscillator.start(now);
     this.chargeOscillator = oscillator;
     this.chargeGain = gain;
@@ -134,7 +142,7 @@ export class AudioEngine {
   impact(strength = 1): void {
     if (!this.enabled || !this.context || !this.master) return;
     const context = this.context;
-    const master = this.master;
+    const master = this.effects ?? this.master;
     const level = clamp(strength, 0.15, 1);
     const now = context.currentTime;
 
@@ -208,7 +216,7 @@ export class AudioEngine {
     crackFilter.Q.value = 0.9;
     crackGain.gain.setValueAtTime(0.22, now);
     crackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
-    source.connect(crackFilter).connect(crackGain).connect(this.master);
+    source.connect(crackFilter).connect(crackGain).connect(this.effects ?? this.master);
     source.start(now);
 
     const body = context.createOscillator();
@@ -219,7 +227,7 @@ export class AudioEngine {
     bodyGain.gain.setValueAtTime(0.0001, now);
     bodyGain.gain.exponentialRampToValueAtTime(0.14, now + 0.012);
     bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-    body.connect(bodyGain).connect(this.master);
+    body.connect(bodyGain).connect(this.effects ?? this.master);
     body.start(now);
     body.stop(now + 0.65);
   }
@@ -231,7 +239,7 @@ export class AudioEngine {
   shatter(): void {
     if (!this.enabled || !this.context || !this.master) return;
     const context = this.context;
-    const master = this.master;
+    const master = this.effects ?? this.master;
     const now = context.currentTime;
 
     const burst = context.createBufferSource();
@@ -276,6 +284,82 @@ export class AudioEngine {
     }
   }
 
+  /** Sequential magnetic latches, a pressure vent, then a sustained inner voice. */
+  inspect(open: boolean): void {
+    this.inspectionOpen = open;
+    this.endInspection();
+    if (!this.enabled || !this.context || !this.effects) return;
+    const context = this.context;
+    const output = this.effects;
+    const now = context.currentTime;
+    if (open) {
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.028, now + 1.2);
+      gain.connect(output);
+      this.inspectionGain = gain;
+      for (const frequency of [73.42, 110, 146.97]) {
+        const oscillator = context.createOscillator();
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gain);
+        oscillator.start(now);
+        this.inspectionOscillators.push(oscillator);
+      }
+    }
+    // Rapid toggles still update the state, without stacking loud transients.
+    if (now - this.lastInspectionSound < 0.3) return;
+    this.lastInspectionSound = now;
+    for (let latch = 0; latch < 6; latch += 1) {
+      const at = now + latch * 0.085;
+      const pan = context.createStereoPanner();
+      pan.pan.value = Math.sin(latch * 2.4) * 0.75;
+      pan.connect(output);
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime((open ? 540 : 370) + latch * 41, at);
+      oscillator.frequency.exponentialRampToValueAtTime(120 + latch * 17, at + 0.07);
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(0.055, at + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.2);
+      oscillator.connect(gain).connect(pan);
+      oscillator.start(at);
+      oscillator.stop(at + 0.22);
+      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); pan.disconnect(); };
+    }
+    const air = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    air.buffer = this.createNoise(1.4, 0.7);
+    filter.type = 'bandpass';
+    filter.Q.value = 0.7;
+    filter.frequency.setValueAtTime(open ? 180 : 1600, now);
+    filter.frequency.exponentialRampToValueAtTime(open ? 2400 : 120, now + 1.1);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+    air.connect(filter).connect(gain).connect(output);
+    air.start(now);
+    air.onended = () => { air.disconnect(); filter.disconnect(); gain.disconnect(); };
+  }
+
+  private endInspection(): void {
+    if (!this.context || !this.inspectionGain) return;
+    const gain = this.inspectionGain;
+    const oscillators = this.inspectionOscillators;
+    const now = this.context.currentTime;
+    gain.gain.cancelAndHoldAtTime(now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.25);
+    oscillators.forEach((oscillator) => {
+      oscillator.stop(now + 0.3);
+      oscillator.onended = () => oscillator.disconnect();
+    });
+    const last = oscillators.at(-1);
+    if (last) last.onended = () => { last.disconnect(); gain.disconnect(); };
+    this.inspectionOscillators = [];
+    this.inspectionGain = null;
+  }
+
   async suspend(): Promise<void> {
     if (this.context?.state === 'running') await this.context.suspend();
   }
@@ -285,6 +369,9 @@ export class AudioEngine {
   }
 
   reset(): void {
+    this.inspectionOpen = false;
+    this.endInspection();
+    this.lastInspectionSound = -10;
     this.endCharge();
     this.setEnabled(false);
     if (this.soundtrack) {
@@ -294,10 +381,13 @@ export class AudioEngine {
   }
 
   dispose(): void {
+    this.endInspection();
     this.endCharge();
     this.soundtrack?.pause();
     this.soundtrackSource?.disconnect();
     this.master?.disconnect();
+    this.effects?.disconnect();
+    this.reverb?.disconnect();
     this.atmosphere?.disconnect();
     this.filter?.disconnect();
     this.analyser?.disconnect();
@@ -330,6 +420,34 @@ export class AudioEngine {
 
     const context = new AudioContextConstructor({ latencyHint: 'playback' });
     const master = context.createGain();
+    const effects = context.createGain();
+    const reverb = context.createConvolver();
+    const wet = context.createGain();
+    const damping = context.createBiquadFilter();
+    const limiter = context.createDynamicsCompressor();
+    // A deterministic stereo room impulse: diffuse tail plus early reflections.
+    const impulse = context.createBuffer(2, Math.floor(context.sampleRate * 1.8), context.sampleRate);
+    let seed = 701;
+    for (let channel = 0; channel < 2; channel += 1) {
+      const samples = impulse.getChannelData(channel);
+      for (let i = 0; i < samples.length; i += 1) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const t = i / context.sampleRate;
+        samples[i] = (seed / 0xffffffff * 2 - 1) * Math.exp(-t * 4.5) * Math.min(1, t * 35);
+      }
+      for (const delay of [.041, .079, .127]) samples[Math.floor((delay + channel * .009) * context.sampleRate)] = .7;
+    }
+    reverb.buffer = impulse;
+    wet.gain.value = 0.27;
+    damping.type = 'lowpass';
+    damping.frequency.value = 2400;
+    effects.connect(master);
+    effects.connect(reverb).connect(damping).connect(wet).connect(master);
+    limiter.threshold.value = -8;
+    limiter.knee.value = 12;
+    limiter.ratio.value = 4;
+    limiter.attack.value = .004;
+    limiter.release.value = .2;
     const atmosphere = context.createGain();
     const filter = context.createBiquadFilter();
     const analyser = context.createAnalyser();
@@ -340,7 +458,7 @@ export class AudioEngine {
     filter.Q.value = 0.4;
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.6;
-    atmosphere.connect(filter).connect(master).connect(context.destination);
+    atmosphere.connect(filter).connect(master).connect(limiter).connect(context.destination);
     // A passive tap: the analyser reads the signal without altering it.
     filter.connect(analyser);
 
@@ -353,6 +471,8 @@ export class AudioEngine {
 
     this.context = context;
     this.master = master;
+    this.effects = effects;
+    this.reverb = reverb;
     this.atmosphere = atmosphere;
     this.filter = filter;
     this.analyser = analyser;

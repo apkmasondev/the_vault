@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RAMPS } from '../app/constants';
 import { clamp, smoothstep } from '../utils/math';
 import { PostChain } from './PostChain';
+import { RelicAssembly } from './RelicAssembly';
 import {
   coreFragmentShader,
   coreVertexShader,
@@ -49,6 +50,12 @@ export class VaultRenderer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   private readonly artifact = new THREE.Group();
+  private readonly projectedArtifact = new THREE.Vector3();
+  private readonly hitTarget = { x: 50, y: 50 };
+  private readonly relic: RelicAssembly;
+  private readonly core: THREE.Mesh;
+  private inspectionTarget = 0;
+  private inspection = 0;
   /** Everything the film frames, scaled together to match that frame. */
   private readonly world = new THREE.Group();
   private readonly coreMaterial: THREE.ShaderMaterial;
@@ -123,6 +130,7 @@ export class VaultRenderer {
       stencil: false,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.relic = new RelicAssembly();
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(this.quality.dpr);
     this.camera.position.z = 6;
@@ -217,7 +225,8 @@ export class VaultRenderer {
     // The interior is drawn first so the shell reads as being in front of it.
     this.heart = new THREE.Mesh(heartGeometry, this.heartMaterial);
     this.heart.renderOrder = 1;
-    this.artifact.add(new THREE.Mesh(coreGeometry, this.coreMaterial), this.heart);
+    this.core = new THREE.Mesh(coreGeometry, this.coreMaterial);
+    this.artifact.add(this.core, this.heart, this.relic.group);
 
     this.haloTexture = this.createHaloTexture();
     const haloMaterial = new THREE.SpriteMaterial({
@@ -349,6 +358,10 @@ export class VaultRenderer {
     const failure = smoothstep(RAMPS.failureFadeStart, RAMPS.failureFadeEnd, progress);
     this.reveal = reveal;
     this.charge = charge;
+    this.inspection += (this.inspectionTarget - this.inspection) * (1 - Math.exp(-deltaSeconds * 3.2));
+    const aperture = Math.min(1.25, this.inspection + this.split * 1.5);
+    this.relic.update(this.elapsed, reveal, charge, this.heat, this.shatter, aperture);
+    this.core.scale.setScalar(this.relic.ready ? 0.68 : 1);
     this.artifact.visible = reveal > 0.002
       && progress < RAMPS.artifactHiddenAfter
       && this.shatter < 1;
@@ -358,7 +371,7 @@ export class VaultRenderer {
     core.uReveal!.value = reveal;
     core.uPulse!.value = this.pulseAmount;
     core.uFailure!.value = failure;
-    core.uCharge!.value = charge;
+    core.uCharge!.value = Math.min(1, charge + this.inspection * 0.22);
     core.uShock!.value = this.shock;
     (core.uAudio!.value as THREE.Vector3).set(state.audioLow, state.audioMid, state.audioHigh);
     // Points from the object toward wherever the pointer is on screen.
@@ -374,13 +387,13 @@ export class VaultRenderer {
 
     for (const pool of this.debrisPools) pool.uniforms.uTime!.value = this.elapsed;
 
-    this.heartMaterial.uniforms.uSplit!.value = this.split;
+    this.heartMaterial.uniforms.uSplit!.value = this.split + this.inspection * 0.065;
     this.heartMaterial.uniforms.uShatter!.value = this.shatter;
     this.heartMaterial.uniforms.uReveal!.value = reveal;
     this.heartMaterial.uniforms.uTime!.value = this.elapsed;
     (this.heartMaterial.uniforms.uSplitAxis!.value as THREE.Vector3).copy(this.splitAxis);
     // Swells out of the break rather than sitting still inside it.
-    this.heart.scale.setScalar(1 + this.split * 0.75);
+    this.heart.scale.setScalar((this.relic.ready ? 0.65 : 1) + this.split * 0.75);
 
     this.moteMaterial.uniforms.uTime!.value = this.elapsed;
     this.moteMaterial.uniforms.uOpen!.value = open;
@@ -410,7 +423,7 @@ export class VaultRenderer {
     const halo = this.artifact.getObjectByName('halo');
     if (halo instanceof THREE.Sprite) {
       halo.material.opacity = reveal * (
-        0.1 + this.pulseAmount * 0.12 + failure * 0.06 + charge * 0.16 + state.audioLow * 0.08
+        0.1 + this.pulseAmount * 0.12 + failure * 0.06 + charge * 0.16 + state.audioLow * 0.08 + this.inspection * 0.12
       );
       halo.position.x = pointerX * 0.06;
       halo.position.y = -pointerY * 0.04;
@@ -531,8 +544,8 @@ export class VaultRenderer {
     this.pulseAmount = Math.min(1, this.pulseAmount + 0.25 + force * 0.4);
     this.pendingImpact = Math.max(this.pendingImpact, force);
 
-    // Damage never heals. Roughly five solid hits will finish it.
-    this.damage = clamp(this.damage + 0.1 + force * 0.2);
+    // Damage never heals. Around ten solid hits leave room to explore the core.
+    this.damage = clamp(this.damage + 0.05 + force * 0.1);
     this.burstDebris(0.5 + force * 1.5, normalX, normalY, 0.55);
     if (this.damage >= 1) this.beginShatter();
   }
@@ -580,6 +593,14 @@ export class VaultRenderer {
     return clamp(1 - this.damage);
   }
 
+  /** Keep the accessible hit target over the physical object after a throw. */
+  getHitTarget(): Readonly<{ x: number; y: number }> {
+    this.artifact.getWorldPosition(this.projectedArtifact).project(this.camera);
+    this.hitTarget.x = (this.projectedArtifact.x * 0.5 + 0.5) * 100;
+    this.hitTarget.y = (-this.projectedArtifact.y * 0.5 + 0.5) * 100;
+    return this.hitTarget;
+  }
+
   /**
    * The force of the last wall strike the caller has not answered yet, so sound
    * and copy can respond to it. Reading it clears it.
@@ -597,7 +618,7 @@ export class VaultRenderer {
   getGlow(): number {
     return clamp(this.reveal * (
       this.charge * 0.55 + this.pulseAmount * 0.45 + this.shock * 0.7
-      + this.split * 2.2 + this.heat * 0.4
+      + this.split * 2.2 + this.heat * 0.4 + this.inspection * 0.3
       + (1 - smoothstep(0, 0.5, this.shatter)) * this.shatter * 6
     ));
   }
@@ -641,6 +662,10 @@ export class VaultRenderer {
   /** How strongly the object is currently asking to be touched. */
   setInviting(amount: number): void {
     this.inviting = clamp(amount);
+  }
+
+  setInspection(open: boolean): void {
+    this.inspectionTarget = open && !this.destroyed ? 1 : 0;
   }
 
   /**
@@ -706,6 +731,8 @@ export class VaultRenderer {
   }
 
   reset(): void {
+    this.inspection = 0;
+    this.inspectionTarget = 0;
     this.elapsed = 0;
     this.pulseAmount = 0;
     this.shock = 0;
@@ -741,6 +768,7 @@ export class VaultRenderer {
   }
 
   dispose(): void {
+    this.relic.dispose();
     this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.geometries.forEach((geometry) => geometry.dispose());

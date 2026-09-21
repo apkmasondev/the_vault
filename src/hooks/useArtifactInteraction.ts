@@ -24,11 +24,14 @@ interface InteractionCallbacks {
   readonly onWallImpact: (force: number) => void;
   readonly onDestroyed: () => void;
   readonly onFracture: () => void;
+  readonly onInspectionChange: (open: boolean) => void;
 }
 
 export interface ArtifactInteraction {
   readonly phase: ArtifactPhase;
   readonly destroyed: boolean;
+  readonly inspecting: boolean;
+  readonly toggleInspection: () => void;
   /** Written into by the caller each render, from the current cue. */
   readonly exposedRef: React.RefObject<boolean>;
   readonly chargeRef: React.RefObject<number>;
@@ -38,6 +41,7 @@ export interface ArtifactInteraction {
   readonly beginHold: (clientX: number, clientY: number) => void;
   readonly trackHold: (clientX: number, clientY: number) => void;
   readonly endHold: () => void;
+  readonly cancelHold: () => void;
   readonly nudge: (directionX: number, directionY: number) => void;
   /**
    * The two halves of a frame, which cannot be merged: charge has to be settled
@@ -82,11 +86,46 @@ export const useArtifactInteraction = (
   const [resonant, setResonant] = useState(false);
   const [responding, setResponding] = useState(false);
   const [destroyed, setDestroyed] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const inspectingRef = useRef(false);
 
   // Held in a ref so `advance` can stay stable across renders; the loop that
   // calls it must not be torn down every time a prop identity changes.
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+
+  const inspect = useCallback((open: boolean): void => {
+    if (inspectingRef.current === open) return;
+    inspectingRef.current = open;
+    setInspecting(open);
+    rendererRef.current?.setInspection(open);
+    callbacksRef.current.onInspectionChange(open);
+  }, [rendererRef]);
+
+  const toggleInspection = useCallback((): void => {
+    if (!exposedRef.current) return;
+    inspect(!inspectingRef.current);
+  }, [inspect]);
+
+  const cancelHold = useCallback((): void => {
+    if (!gestureRef.current.active) return;
+    gestureRef.current.end();
+    rendererRef.current?.setGrab(false);
+    chargeRef.current = 0;
+    setCharging(false);
+    setCarrying(false);
+    callbacksRef.current.onChargeRelease(0);
+  }, [rendererRef]);
+
+  useEffect(() => {
+    const hide = (): void => { if (document.hidden) cancelHold(); };
+    window.addEventListener('blur', cancelHold);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('blur', cancelHold);
+      document.removeEventListener('visibilitychange', hide);
+    };
+  }, [cancelHold]);
 
   useEffect(() => () => {
     if (respondingTimerRef.current !== null) window.clearTimeout(respondingTimerRef.current);
@@ -110,6 +149,7 @@ export const useArtifactInteraction = (
   }, []);
 
   const beginHold = useCallback((clientX: number, clientY: number): void => {
+    if (!exposedRef.current || gestureRef.current.active) return;
     noteContact();
     gestureRef.current.begin(clientX, clientY, performance.now());
     setCharging(true);
@@ -165,18 +205,26 @@ export const useArtifactInteraction = (
     contactsRef.current += 1;
     if (charge >= RESONANT_CHARGE) {
       resonantReleasesRef.current += 1;
-      if (resonantReleasesRef.current >= RESONANT_RELEASES) setResonant(true);
+      if (resonantReleasesRef.current >= RESONANT_RELEASES) {
+        setResonant(true);
+        inspect(true);
+      }
     }
     announce(setResponding, respondingTimerRef, RESPONDING_MS);
-  }, [announce, noteContact, rendererRef]);
+  }, [announce, inspect, noteContact, rendererRef]);
 
   const nudge = useCallback((directionX: number, directionY: number): void => {
+    if (!exposedRef.current) return;
     noteContact();
     rendererRef.current?.nudge(directionX, directionY);
   }, [noteContact, rendererRef]);
 
   const beginFrame = useCallback((deltaSeconds: number): void => {
     const gesture = gestureRef.current;
+    if (!exposedRef.current) {
+      cancelHold();
+      inspect(false);
+    }
     // Charge builds only while the object is held still; moving it is a
     // different intent and gives the charge back.
     const holdingStill = gesture.active && !gesture.isDragging;
@@ -184,7 +232,7 @@ export const useArtifactInteraction = (
       ? Math.min(1, chargeRef.current + deltaSeconds / CHARGE_SECONDS)
       : Math.max(0, chargeRef.current - deltaSeconds * 3);
     if (holdingStill) callbacksRef.current.onChargeChange(chargeRef.current);
-  }, []);
+  }, [cancelHold, inspect]);
 
   const endFrame = useCallback((now: number): number => {
     const renderer = rendererRef.current;
@@ -198,7 +246,10 @@ export const useArtifactInteraction = (
       announce(setStruck, struckTimerRef, STRUCK_MS);
     }
     if (renderer?.consumeDestruction()) {
+      exposedRef.current = false;
+      cancelHold();
       setDestroyed(true);
+      inspect(false);
       callbacksRef.current.onDestroyed();
     }
 
@@ -215,9 +266,10 @@ export const useArtifactInteraction = (
       : 0;
     renderer?.setInviting(inviting);
     return inviting;
-  }, [announce, rendererRef]);
+  }, [announce, cancelHold, inspect, rendererRef]);
 
   const reset = useCallback((): void => {
+    inspect(false);
     gestureRef.current.end();
     rendererRef.current?.setGrab(false);
     chargeRef.current = 0;
@@ -231,11 +283,13 @@ export const useArtifactInteraction = (
     setResonant(false);
     setResponding(false);
     setDestroyed(false);
-  }, [rendererRef]);
+  }, [inspect, rendererRef]);
 
   return {
     phase: { charging, carrying, struck, fractured, resonant, responding },
     destroyed,
+    inspecting,
+    toggleInspection,
     exposedRef,
     chargeRef,
     contactsRef,
@@ -244,6 +298,7 @@ export const useArtifactInteraction = (
     beginHold,
     trackHold,
     endHold,
+    cancelHold,
     nudge,
     beginFrame,
     endFrame,
